@@ -1,0 +1,48 @@
+
+
+
+=|pipe1 # send to pipe1
+
+=>file1 # send to file1
+
+f a b = "a --- b"             # define macro f, no output, not even a newlne
+f y z \= ösdlfjölasd          # y --- z = ösdlfjölasd
+
+f hei hoo                     # hei --- hoo
+f "hei " " hoo 000 f jou joi" # hei  ---  hoo 000 jou --- joi
+
+=!echo                        # echo the contents of the following
+
+dsfasdf
+asd
+f
+asdf
+asdf
+asd
+asf
+
+=f a b                        # a multiline macro
+sdfsdaf a a sdfasd b fad
+sfadsf b  adf adf  
+
+case = f a b                        # a multiline macro with case, how enumerate cases?
+case1 sdfsdaf a a sdfasd b fad
+sfadsf b  adf adf  
+case2                               
+
+=branch1
+aaa
+=branch2
+bbb
+
+f = case of a -> branch1; b -> branch2
+=                                   # stdout
+
+sdf sdf a
+f a                                 # rsults in "aaa", i.e branch1 expanded
+
+
+
+pipe2>file1
+pipe1>file1
+
