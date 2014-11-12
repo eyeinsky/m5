@@ -74,7 +74,7 @@ eLine line = do
    macros <- get
    let f (w'@ (Left w) : ws) = let 
             g (args, body) = u
-         in maybe w' g (HM.lookup w macros)
+         in maybe w' (apply macros) (HM.lookup w macros)
 
 
 
@@ -89,7 +89,7 @@ eLine line = do
          = (assoc, leftover)
       
       apply :: Macros -> Line -> Line
-      apply hm (ws, eol) = u -- bimap id ws
+      apply hm (args, body) (ws, eol) = u -- bimap id ws
 
 output :: [Line] -> M ()
 output = tell
