@@ -27,9 +27,9 @@ import qualified Data.Text.IO as TIO
 import Text.Parsec hiding (space, spaces, Line, Stream)
 import Text.Parsec.Text
 import Data.Char
-import Data.Either (either)
+import Data.Either (either, lefts)
 
-import Control.Applicative ((*>),(<*))
+import Control.Applicative ((*>),(<*), pure)
 
 import Control.Monad.Identity
 import Control.Monad.State
@@ -39,134 +39,57 @@ import qualified Data.HashMap.Lazy as HM
 import Data.Hashable
 import GHC.Generics (Generic)
 
+import Helpers
+import Parser
+
 main = do
    [smt, sm] <- mapM getTest ["sm-and-text", "sm"]
    parseTest parser smt
 
-
---
--- Parser
---
-
-newtype AST = AST [Stream :| MacroBlock] deriving Show
-
-data MacroBlock = MacroBlock LHS Text deriving (Show)
-data Macro = Macro LHS Line deriving (Show)
-data LHS = LHS Name FormalArgs deriving (Show)
-type Name = Word
-type FormalArgs = [Word]
-
-data Stream = Stream F Text deriving (Show)
-type Text = [Line :| Macro]
-type Line = ([Word :| Spaces], EOL)
-data Word = W String | Sy String deriving (Eq, Show, Generic)
-instance Hashable Word
-data Spaces = Sp String deriving (Show)
-data EOL = EOL String deriving (Show)
-type F = String
-
-parser = AST <$> many (stream <:|> macroblock)
-
-stream = Stream "stdout" <$> text
-
-macroblock = MacroBlock
-   <$> (many spaceP *> char '=' *> lhs <* eol)
-   <*> many (line <:|> macro)
-   <?> "macroblock"
-
-text = many1 (line <:|> macro) <?> "text"
-
-macro = Macro <$> (lhs <* char '=')
-              <*> (many spaceP *> line)
-              <?> "macro"
-
-lhs = LHS <$> (many spaceP *> word <* many spaceP)
-          <*> (sepEndBy word $ many spaceP)
-          <?> "lhs"
-
-line = (,) <$> many (word <:|> spaces) <*> eol <?> "line"
-
-word = try (W <$> many1 alphaNum)
-    <|>    Sy <$> (many1 . noneOf $ sp <> nl <> spc)
-    <?> "word"
-
-spaces = Sp <$> spacesP <?> "spaces"
-eol = EOL <$> many1 (oneOf nl) <?> "eol"
-
-spacesP = many1 spaceP 
-spaceP = oneOf sp
-
-sp = " \t"
-nl = "\r\n"
-spc = "=\\"
-
-
-
-
---
--- Helpers
---
-getTest file = TIO.readFile ("tests/" <> file) :: IO T.Text
-u = undefined
-
-
-parseEither l r = try (Left <$> l) <|> (Right <$> r)
-(<:|>) = parseEither 
-infixl 5 <:|>
-
-infixl 5 :|
-type (:|) = Either
-bimap f g e = case e of
-   Left l -> Left $ f l
-   Right r -> Right $ g r
-
-
-{- https://www.gnu.org/software/m4/manual/m4.html#Changeword
-   default is [_a-zA-Z][_a-zA-Z0-9]* -}
-
-
---
--- Evaluate
---
-
-type Macros = HM.HashMap F ([Text] -> F)
+type Macros = HM.HashMap Name ([Word], [Line])
 type Output = [Line]
 type M = WriterT Output (StateT Macros Identity)
+type ArgMap = HM.HashMap Word Word
 
--- newtype AST = AST [Stream :| MacroBlock] deriving Show
-evaluate (AST (Left x : _)) = f x
-   where
-   -- data Stream = Stream F Text deriving (Show)
-   -- type Text = [Line :| Macro]
-   f (Stream _ value) = map (either evalLine defineMacro) value
+evaluate :: AST -> M ()
+evaluate (AST ast) = mapM_ (either eStream eMacroBlock) ast
 
-evalLine line = do
-   macroMap <- get
-   -- JÄRG find if macro and then take args
-   tell =<< (flip replace line <$> get)
+eMacroBlock :: MacroBlock -> M ()
+eMacroBlock (MacroBlock lhs text) = define lhs =<< eText text
 
-defineMacro (Macro (LHS name formal) value) = modify (HM.insert name func)
-   where
-      func actual = let
-            hmap = HM.fromList $ zip formal actual
-         in replace hmap value
+eMacro :: Macro -> M ()
+eMacro (Macro lhs line) = define lhs . pure =<< eLine line 
 
--- type Line = ([Word :| Spaces], EOL)
-replace :: HM.HashMap Word Word -> Line -> Line
-replace hmap (xs, eol) = (map f xs, eol)
+define :: LHS -> [Line] -> M ()
+define lhs body = modify (HM.insert (name lhs) (args lhs, body))
+
+eStream :: Stream -> M ()
+eStream (Stream _ text) = output =<< eText text
+
+eText :: Text -> M [Line]
+eText text = lefts <$> mapM (bifmap eLine eMacro) text
+
+eLine :: Line -> M Line
+eLine line = do
+   macros <- get
+   let f (w'@ (Left w) : ws) = let 
+            g (args, body) = u
+         in maybe w' g (HM.lookup w macros)
+
+
+
+   u
    where 
-      f (Left w) = Left $ maybe w id $ HM.lookup w hmap
-      f r = r
-{-
+      zipw :: FormalArgs -> [Word :| Spaces] -> ArgMap -> (ArgMap, [Word :| Spaces])
+      zipw formal@ (x : xs) actual@ (Left w : ys) assoc
+         = zipw xs ys (HM.insert x w assoc)
+      zipw formal@ (x : xs) actual@ (_ {-space-} : ys) assoc 
+         = zipw formal ys assoc
+      zipw _ leftover assoc
+         = (assoc, leftover)
+      
+      apply :: Macros -> Line -> Line
+      apply hm (ws, eol) = u -- bimap id ws
 
-define :: Macro -> M ()
-define _ = error "make symbol a separate type! (apart from Word)"
-
-evaluate :: AST -> F
-evaluate ast = u
-
-   where 
-      define x = modify
- -}       
-
-
+output :: [Line] -> M ()
+output = tell
