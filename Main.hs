@@ -49,7 +49,7 @@ main = do
 type Macros = HM.HashMap Name ([Word], [Line])
 type Output = [Line]
 type M = WriterT Output (StateT Macros Identity)
-type ArgMap = HM.HashMap Word Word
+type ArgMap = HM.HashMap Word [Line]
 
 evaluate :: AST -> M ()
 evaluate (AST ast) = mapM_ (either eStream eMacroBlock) ast
@@ -70,26 +70,37 @@ eText :: Text -> M [Line]
 eText text = lefts <$> mapM (bifmap eLine eMacro) text
 
 eLine :: Line -> M Line
-eLine line = do
+eLine line@ (ws, eol)  = do
    macros <- get
-   let f (w'@ (Left w) : ws) = let 
-            g (args, body) = u
-         in maybe w' (apply macros) (HM.lookup w macros)
-
-
-
    u
    where 
-      zipw :: FormalArgs -> [Word :| Spaces] -> ArgMap -> (ArgMap, [Word :| Spaces])
-      zipw formal@ (x : xs) actual@ (Left w : ys) assoc
-         = zipw xs ys (HM.insert x w assoc)
-      zipw formal@ (x : xs) actual@ (_ {-space-} : ys) assoc 
-         = zipw formal ys assoc
-      zipw _ leftover assoc
+      zipArgs :: FormalArgs -> [Word :| Spaces] -> ArgMap
+              -> (ArgMap, [Word :| Spaces])
+      zipArgs formal@ (x : xs) actual@ (Left w : ys) assoc
+         = zipArgs xs ys (HM.insert x w assoc)
+      zipArgs formal@ (x : xs) actual@ (_ {-space-} : ys) assoc 
+         = zipArgs formal ys assoc
+      zipArgs _ leftover assoc
          = (assoc, leftover)
       
-      apply :: Macros -> Line -> Line
-      apply hm (args, body) (ws, eol) = u -- bimap id ws
+      applier :: Macros -> Line -> [Line]
+      applier hm (w'@ (Left w) : ws, _) =
+         maybe u {-w'-} (u {-helper ws-}) (HM.lookup w hm)
+         u -- bimap id ws
+
+      helper :: Macros -> [Word :| Spaces] -> (FormalArgs, [Line]) -> [Line]
+      helper macros ws (args, body) = let
+         (argMap, leftover) = zipArgs args ws HM.empty :: (ArgMap, [Word :| Spaces])
+         in expand macros argMap =<< body
+
+      expand :: Macros -> ArgMap -> Line -> [Line]
+      expand macros argMap (w'@ (Left w) : ws, eol) = 
+         maybe u
+            (\(lines :: [Line]) -> applier macros =<< u ) -- (lines<>[(ws, eol)]))
+            (HM.lookup w argMap)
+      -- expand argMap (s           : ws, eol) = u
+
+reparse = u
 
 output :: [Line] -> M ()
 output = tell
