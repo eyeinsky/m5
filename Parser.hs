@@ -52,6 +52,7 @@ type FormalArgs = [Word]
 
 data Stream = Stream F Text deriving (Show)
 type Text = [Line :| Macro]
+type Raw = [Line]
 type Line = ([Word :| Spaces], EOL)
 data Word = W String | Sy String deriving (Eq, Show, Generic)
 instance Hashable Word

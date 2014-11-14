@@ -46,10 +46,17 @@ main = do
    [smt, sm] <- mapM getTest ["sm-and-text", "sm"]
    parseTest parser smt
 
-type Macros = HM.HashMap Name ([Word], [Line])
-type Output = [Line]
 type M = WriterT Output (StateT Macros Identity)
-type ArgMap = HM.HashMap Word [Line]
+
+type Output = Raw
+
+type Macros = HM.HashMap Name Def
+type Def = (FormalArgs, Raw)
+type ArgMap = HM.HashMap Word Raw
+
+
+reparse :: Raw -> AST
+reparse = u
 
 evaluate :: AST -> M ()
 evaluate (AST ast) = mapM_ (either eStream eMacroBlock) ast
@@ -74,21 +81,21 @@ eLine line@ (ws, eol)  = do
    macros <- get
    u
    where 
-      zipArgs :: FormalArgs -> [Word :| Spaces] -> ArgMap
-              -> (ArgMap, [Word :| Spaces])
-      zipArgs formal@ (x : xs) actual@ (Left w : ys) assoc
-         = zipArgs xs ys (HM.insert x w assoc)
-      zipArgs formal@ (x : xs) actual@ (_ {-space-} : ys) assoc 
-         = zipArgs formal ys assoc
-      zipArgs _ leftover assoc
-         = (assoc, leftover)
-      
-      applier :: Macros -> Line -> [Line]
-      applier hm (w'@ (Left w) : ws, _) =
-         maybe u {-w'-} (u {-helper ws-}) (HM.lookup w hm)
-         u -- bimap id ws
+      {- I need to concatMap or similar here:
+         * expand macros from a single line to raw (i.e, many lines),
+         * then reparse raw to AST, and
+         * then recurse in expansion until nothing can be expanded anymore.
+      -}
 
-      helper :: Macros -> [Word :| Spaces] -> (FormalArgs, [Line]) -> [Line]
+      applier :: Macros -> Line -> Raw
+      applier hm (w'@ (Left w) : ws, eol) = case HM.lookup w hm of
+         Just ((args, body) :: Def)
+            -> -- a matching macro! => will expand it
+            u
+         _  -> -- no match => leave word as is and prepend it to the output
+            w `prepend` applier hm (ws, eol)
+
+      helper :: Macros -> [Word :| Spaces] -> Def -> [Line]
       helper macros ws (args, body) = let
          (argMap, leftover) = zipArgs args ws HM.empty :: (ArgMap, [Word :| Spaces])
          in expand macros argMap =<< body
@@ -96,11 +103,27 @@ eLine line@ (ws, eol)  = do
       expand :: Macros -> ArgMap -> Line -> [Line]
       expand macros argMap (w'@ (Left w) : ws, eol) = 
          maybe u
-            (\(lines :: [Line]) -> applier macros =<< u ) -- (lines<>[(ws, eol)]))
+            (\(lines :: [Line]) -> applier macros =<< (lines<>[(ws, eol)]))
             (HM.lookup w argMap)
       -- expand argMap (s           : ws, eol) = u
 
-reparse = u
-
-output :: [Line] -> M ()
+output :: Raw -> M ()
 output = tell
+
+
+
+-- helpers
+
+zipArgs :: FormalArgs -> [Word :| Spaces] -> ArgMap
+        -> (ArgMap, [Word :| Spaces])
+zipArgs formal@ (x : xs) actual@ (Left w : ys) assoc
+   = zipArgs xs ys (HM.insert x u {-w-} assoc)
+zipArgs formal@ (x : xs) actual@ (_ {-space-} : ys) assoc 
+   = zipArgs formal ys assoc
+zipArgs _ leftover assoc
+   = (assoc, leftover)
+
+
+prepend :: Word -> Raw -> Raw
+prepend w ((ws, eol) : rest) = (Left w : ws, eol) : rest
+prepend w raw = error "prepend: empty raw"
