@@ -1,3 +1,4 @@
+=> stdout
 random 	 text
 here
 
@@ -13,3 +14,7 @@ func x y
 func2 õõ ää
 adsfasdf
 dfsadd
+
+=> stdout
+
+func2 jehuu xx
