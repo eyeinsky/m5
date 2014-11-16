@@ -1,14 +1,15 @@
-random 	 
-text
+random 	 text
 here
 
-func a b = esimene arg on a, teine arg on b
+func a b = esimene arg on "a", teine arg on "b"
 
 func jee ou jee
 
 = func2 a b
 a -- b
+func x y
 
 = func3
+func2 õõ ää
 adsfasdf
 dfsadd

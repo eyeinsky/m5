@@ -88,8 +88,10 @@ lhs = LHS <$> (many spaceP *> word <* many spaceP)
 line = (,) <$> many (word <:|> spaces) <*> eol <?> "line"
 
 word = try (W <$> many1 alphaNum)
-    <|>    Sy <$> (many1 . noneOf $ sp <> nl <> spc)
+    <|>    Sy <$> many1 symbol
     <?> "word"
+    where
+      symbol = satisfy $ \ c -> not (isAlphaNum c || c `elem` (sp <> nl <> spc))
 
 spaces = Sp <$> spacesP <?> "spaces"
 eol = EOL <$> many1 (oneOf nl) <?> "eol"

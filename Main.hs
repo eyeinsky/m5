@@ -50,9 +50,13 @@ main = do
       Right res -> let 
             raw = evaluate HM.empty res
             text = raw2text raw
-         in 
+         in do
             -- TIO.putStr text
+            print res
+            print "-----"
             print raw
+            print "-----"
+            TIO.putStr text
 
 test = do
    [smt, sm] <- mapM getTest ["sm-and-text", "sm"]
