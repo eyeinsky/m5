@@ -47,3 +47,4 @@ bifmap f g e = case e of
    Left l -> Left <$> f l
    Right r -> Right <$> g r
 
+data U

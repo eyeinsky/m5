@@ -53,14 +53,20 @@ type FormalArgs = [Word]
 data Stream = Stream F Text deriving (Show)
 type Text = [Line :| Macro]
 type Raw = [Line]
-type Line = ([Word :| Spaces], EOL)
+type Line = ([Token], EOL)
+type Token = Word :| Spaces
 data Word = W String | Sy String deriving (Eq, Show, Generic)
 instance Hashable Word
 data Spaces = Sp String deriving (Show)
 data EOL = EOL String deriving (Show)
 type F = String
 
-parser = AST <$> many (stream <:|> macroblock)
+ast = AST <$> many (stream <:|> macroblock)
+
+reparse :: Raw -> AST
+reparse lines = AST [Left $ Stream u $ map Left lines]
+   where x = x
+      
 
 stream = Stream "stdout" <$> text
 
