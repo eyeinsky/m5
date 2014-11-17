@@ -1,6 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE FlexibleInstances #-}
-module M5.Expand where
+module M5.Expand2 () where
 
 import Prelude ()
 import Prelude2
@@ -22,31 +22,23 @@ import M5.Helpers
 import M5.Types
 import M5.Parse
 
+
+
+
+type S = (Macros, U)
 type M = WriterT Output (StateT Macros Identity)
 
-
---
-type Output = Raw
-
-output :: Raw -> M ()
-output = tell
-
-type Output2 = HM.HashMap Word Raw
-output2 name raw = tell $ HM.fromList [(name, raw)]
-
+type Output = HM.HashMap Word Raw
 instance Monoid (HM.HashMap Word Raw) where
    mempty = HM.fromList [(W "stdout", [([Left $ W ""], EOL "")])]
    mappend = HM.unionWith (<>)
-
 type Macros = HM.HashMap Name Def
 type Def = (FormalArgs, Raw)
 type ArgMap = HM.HashMap Word Raw
 
-{-
-expand :: Macros -> AST -> Output
-expand macros (AST ast) = f $ mapM_ (either eStream eMacroBlock) ast
-   where f = runIdentity . flip evalStateT macros . execWriterT
--}
+
+output :: Name -> Raw -> M ()
+output name raw = tell $ HM.fromList [(name, raw)]
 
 expand :: AST -> M ()
 expand (AST ast) = mapM_ (either eStream eMacroBlock) ast
@@ -56,31 +48,34 @@ eMacroBlock :: MacroBlock -> M ()
 eMacroBlock (MacroBlock lhs text) = define lhs =<< eText text
 
 eMacro :: Macro -> M ()
-eMacro (Macro lhs line) = define lhs =<< eLine line
+eMacro (Macro lhs line) = do
+   res <- eLine line
+   define lhs u -- (fragText res)
 
 define :: LHS -> Raw -> M ()
-define lhs body = modify (HM.insert (name lhs) (args lhs, body))
+define lhs body = modify $ (HM.insert (name lhs) (args lhs, body))
 
 eStream :: Stream -> M ()
-eStream (Stream name text) = output =<< eText text
+eStream (Stream name text) = u -- output =<< eText text
 
 eText :: Text -> M Raw
-eText text = concat . lefts <$> mapM (bifmap eLine eMacro) text
+eText text = concat . lefts <$> mapM (bifmap u{-eLine'-} eMacro) text
 
 -- | Evaluate the Line into Raw, and return it instead of 
 --   writing to output -- the caller can decide what
 --   to do with it.
-eLine :: Line -> M Raw
+eLine :: Line -> M Fragment
 eLine line@ (wss@ (ws : rest), eol) = do
    macros <- get
    case either (flip HM.lookup macros) (const Nothing) ws of
       Just (args, body) -> let
             (argMap, leftovers) = zipArgs args rest HM.empty :: (ArgMap, [Token])
             result = expandArgs argMap body <> [(leftovers, eol)] :: Raw
-            -- frag = reparse result :: Fragment
-         in return result 
-      _  -> prepend ws <$> eLine (rest, eol)
-eLine line = return [line]
+            frag = reparse result :: Fragment
+         in return frag 
+      _  -> let rest' = eLine (rest, eol)
+         in u -- prepend ws rest'
+eLine line = u -- [line]
 
 
 expandArgs :: ArgMap -> Raw -> Raw

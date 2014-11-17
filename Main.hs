@@ -47,7 +47,7 @@ main = do
    case parse ast "<stdin>" txt of
       Left err -> print err
       Right res -> let 
-            raw = expand HM.empty res
+            raw = u -- expand HM.empty res
             text = raw2text raw
          in do
             print res

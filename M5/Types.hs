@@ -26,3 +26,9 @@ instance Hashable Word
 data Spaces = Sp String deriving (Show)
 data EOL = EOL String deriving (Show)
 type F = String
+
+
+data Fragment = Fragment
+   { fragText :: Text
+   , fragBlocks :: [Stream :| MacroBlock]
+   } deriving Show

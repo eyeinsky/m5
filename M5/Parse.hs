@@ -25,12 +25,20 @@ import M5.Helpers
 import M5.Types
 
 
-ast = AST <$> many (stream <:|> macroblock)
 
-reparse :: Raw -> AST
-reparse lines = AST [Left $ Stream u $ map Left lines]
+-- reparse :: Raw -> Fragment
+reparse lines = u -- Fragment [Right $ Left $ Stream u $ map Left lines]
    where x = x
-      
+ 
+
+
+fragment = Fragment
+   <$> text
+   <*> many (stream <:|> macroblock)
+   <?> "fragment"
+
+-- rename to blocks?
+ast = AST <$> many (stream <:|> macroblock)
 
 stream = Stream
    <$> (string "=>" *> many spaceP *> word <* eol)
