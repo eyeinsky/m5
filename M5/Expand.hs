@@ -1,5 +1,6 @@
 {-# LANGUAGE NoImplicitPrelude #-}
 {-# LANGUAGE FlexibleInstances #-}
+
 module M5.Expand where
 
 import Prelude ()
@@ -15,42 +16,33 @@ import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Writer
 
-
-
-
 import M5.Helpers
 import M5.Types
 import M5.Parse
 
+
 type M = WriterT Output (StateT Macros Identity)
 
-
---
-type Output = Raw
-
-output :: Raw -> M ()
-output = tell
-
-type Output2 = HM.HashMap Word Raw
-output2 name raw = tell $ HM.fromList [(name, raw)]
-
+type Output = HM.HashMap Word Raw
 instance Monoid (HM.HashMap Word Raw) where
    mempty = HM.fromList [(W "stdout", [([Left $ W ""], EOL "")])]
    mappend = HM.unionWith (<>)
+
+
+output :: Word -> Raw -> M ()
+output name text = tell $ HM.singleton name text
 
 type Macros = HM.HashMap Name Def
 type Def = (FormalArgs, Raw)
 type ArgMap = HM.HashMap Word Raw
 
-{-
-expand :: Macros -> AST -> Output
-expand macros (AST ast) = f $ mapM_ (either eStream eMacroBlock) ast
-   where f = runIdentity . flip evalStateT macros . execWriterT
--}
+
+
+runM = runIdentity . flip evalStateT HM.empty . execWriterT
+
 
 expand :: AST -> M ()
 expand (AST ast) = mapM_ (either eStream eMacroBlock) ast
-   -- where f = runIdentity . flip evalStateT macros . execWriterT
 
 eMacroBlock :: MacroBlock -> M ()
 eMacroBlock (MacroBlock lhs text) = define lhs =<< eText text
@@ -62,7 +54,7 @@ define :: LHS -> Raw -> M ()
 define lhs body = modify (HM.insert (name lhs) (args lhs, body))
 
 eStream :: Stream -> M ()
-eStream (Stream name text) = output =<< eText text
+eStream (Stream name text) = output name =<< eText text
 
 eText :: Text -> M Raw
 eText text = concat . lefts <$> mapM (bifmap eLine eMacro) text
@@ -118,13 +110,4 @@ w2raw w = [([Left w],EOL "")]
 -- Output
 --
 
-raw2text :: Raw -> T.Text
-raw2text raw = T.concat $ map line2te raw
-   where
-      line2te (toks, EOL eol) = T.concat $ map tok2te toks <> [p eol]
-      tok2te = either w2te s2te
-      w2te (W str) = p str
-      w2te (Sy sy) = p sy
-      s2te (Sp str) = p str
-      p = T.pack
 

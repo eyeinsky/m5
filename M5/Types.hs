@@ -6,6 +6,8 @@ import Prelude2
 import Data.Hashable
 import GHC.Generics (Generic)
 
+import qualified Data.Text as T -- GHC.Generics (Generic)
+
 
 import M5.Helpers
 
@@ -32,3 +34,18 @@ data Fragment = Fragment
    { fragText :: Text
    , fragBlocks :: [Stream :| MacroBlock]
    } deriving Show
+
+
+class Default a where
+   def :: a
+
+raw2text :: Raw -> T.Text
+raw2text raw = T.concat $ map line2te raw
+   where
+      line2te (toks, EOL eol) = T.concat $ map tok2te toks <> [p eol]
+      tok2te = either w2te s2te
+      w2te (W str) = p str
+      w2te (Sy sy) = p sy
+      s2te (Sp str) = p str
+      p = T.pack
+

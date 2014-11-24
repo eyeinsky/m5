@@ -31,18 +31,35 @@ import Data.List (concat)
 import Data.Either (either, lefts)
 
 import Control.Applicative ((*>),(<*), pure)
-
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Writer
 
 import qualified Data.HashMap.Lazy as HM
+
+import qualified System.Console.CmdArgs as C
+
 import M5.Helpers
-import M5.Parse
+import qualified M5.Parse as P
 import M5.Types
 import M5.Expand
+import M5.CmdArgs
 
-main = do
+main = go =<< C.cmdArgs u
+
+go (Args (In ins) (Out outs)) = do
+   src <- T.concat <$> mapM getIn ins
+   case parse P.ast "<todo>" src of
+      Left err -> print err
+      Right res -> let hm = runM $ expand res
+         {- TODO: 
+            * need to convert outs to HM
+            * then unionWith it with the 'hm' that runM returned
+            * change the Args type to two texts and parse them to HMs?
+         -- (wrong:) in mapM_ (\(x, y) -> putOut (Right x) u) (HM.toList hm)
+         -}
+   u
+{-
    txt <- TIO.getContents
    case parse ast "<stdin>" txt of
       Left err -> print err
@@ -56,3 +73,4 @@ main = do
             print "-----"
             TIO.putStr text
 
+-}
