@@ -9,8 +9,20 @@ import GHC.Generics (Generic)
 import qualified Data.Text as T -- GHC.Generics (Generic)
 
 
+
+import Control.Monad.Identity
+import Control.Monad.State
+import Control.Monad.Writer
+import qualified Data.HashMap.Lazy as HM
+
+
+
 import M5.Helpers
 
+
+--
+-- Syntax
+-- 
 
 newtype AST = AST [Stream :| MacroBlock] deriving Show
 data MacroBlock = MacroBlock LHS Text deriving (Show)
@@ -48,4 +60,21 @@ raw2text raw = T.concat $ map line2te raw
       w2te (Sy sy) = p sy
       s2te (Sp str) = p str
       p = T.pack
+
+
+--
+-- Expand
+--
+
+type M = WriterT Output (StateT Macros Identity)
+
+type Output = HM.HashMap Word Raw
+instance Monoid (HM.HashMap Word Raw) where
+   mempty = HM.fromList [(W "stdout", [([Left $ W ""], EOL "")])]
+   mappend = HM.unionWith (<>)
+
+type Macros = HM.HashMap Name Def
+type Def = (FormalArgs, Raw)
+type ArgMap = HM.HashMap Word Raw
+
 

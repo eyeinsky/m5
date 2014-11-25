@@ -21,21 +21,6 @@ import M5.Types
 import M5.Parse
 
 
-type M = WriterT Output (StateT Macros Identity)
-
-type Output = HM.HashMap Word Raw
-instance Monoid (HM.HashMap Word Raw) where
-   mempty = HM.fromList [(W "stdout", [([Left $ W ""], EOL "")])]
-   mappend = HM.unionWith (<>)
-
-
-output :: Word -> Raw -> M ()
-output name text = tell $ HM.singleton name text
-
-type Macros = HM.HashMap Name Def
-type Def = (FormalArgs, Raw)
-type ArgMap = HM.HashMap Word Raw
-
 
 
 runM = runIdentity . flip evalStateT HM.empty . execWriterT
@@ -55,6 +40,9 @@ define lhs body = modify (HM.insert (name lhs) (args lhs, body))
 
 eStream :: Stream -> M ()
 eStream (Stream name text) = output name =<< eText text
+   where
+      output :: Word -> Raw -> M ()
+      output name text = tell $ HM.singleton name text
 
 eText :: Text -> M Raw
 eText text = concat . lefts <$> mapM (bifmap eLine eMacro) text
