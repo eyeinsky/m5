@@ -36,6 +36,7 @@ import Control.Monad.State
 import Control.Monad.Writer
 
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashMap.Lazy as HM
 
 import M5.Helpers
 import qualified M5.Parse as P
@@ -44,11 +45,24 @@ import M5.Expand
 import M5.CmdArgs
 
 
-main = go  =<< getArgs 
+main = do
+   args@ (Args oo ii) <- getArgs
+   print args
+   let o = if null oo then def else (mconcat $ parseOut <$> oo)
+       i = if null ii then def else (In $ parseIn <$> ii)
+   go i o
    where
-      go (Args in_ out) = do
+      go in_ out = do
          src <- getConcatIns in_
          case parse P.ast "<todo>" src of
             Left err -> print err
             Right res -> let hm = runM $ expand res
                in po out hm
+      parseOut :: String -> Out
+      parseOut str = def
+      parseIn :: String -> () :| FilePath
+      parseIn str = case str of
+         "-" -> stdin
+         _ -> path str
+
+

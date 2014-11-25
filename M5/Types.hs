@@ -4,6 +4,7 @@ module M5.Types where
 
 import Prelude2
 import Data.Hashable
+import Data.Either (either)
 import GHC.Generics (Generic)
 
 import qualified Data.Text as T -- GHC.Generics (Generic)
@@ -61,6 +62,8 @@ raw2text raw = T.concat $ map line2te raw
       s2te (Sp str) = p str
       p = T.pack
 
+w2t (W str) = pack str
+w2t (Sy str) = pack str
 
 --
 -- Expand
@@ -68,13 +71,11 @@ raw2text raw = T.concat $ map line2te raw
 
 type M = WriterT Output (StateT Macros Identity)
 
-type Output = HM.HashMap Word Raw
-instance Monoid (HM.HashMap Word Raw) where
-   mempty = HM.fromList [(W "stdout", [([Left $ W ""], EOL "")])]
-   mappend = HM.unionWith (<>)
+newtype Output = Output { fromOutput :: HM.HashMap Word Raw }
+instance Monoid Output where
+   mempty = Output $ HM.fromList [(W "stdout", [([Left $ W ""], EOL "")])]
+   mappend (Output a) (Output b) = Output $ HM.unionWith (<>) a b
 
 type Macros = HM.HashMap Name Def
 type Def = (FormalArgs, Raw)
 type ArgMap = HM.HashMap Word Raw
-
-

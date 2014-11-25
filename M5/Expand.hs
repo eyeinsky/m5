@@ -42,7 +42,7 @@ eStream :: Stream -> M ()
 eStream (Stream name text) = output name =<< eText text
    where
       output :: Word -> Raw -> M ()
-      output name text = tell $ HM.singleton name text
+      output name text = tell $ Output $ HM.singleton name text
 
 eText :: Text -> M Raw
 eText text = concat . lefts <$> mapM (bifmap eLine eMacro) text

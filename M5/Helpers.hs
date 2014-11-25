@@ -28,3 +28,5 @@ bifmap f g e = case e of
    Right r -> Right <$> g r
 
 data U
+
+pack = T.pack
