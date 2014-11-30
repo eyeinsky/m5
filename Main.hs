@@ -28,41 +28,75 @@ import Text.Parsec hiding (space, spaces, Line, Stream)
 import Text.Parsec.Text
 import Data.Char
 import Data.List (concat)
-import Data.Either (either, lefts)
+import Data.Either (either, lefts, rights)
 
 import Control.Applicative ((*>),(<*), pure)
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Writer
+import Control.Monad.Either
 
 import qualified Data.HashMap.Lazy as HM
 import qualified Data.HashMap.Lazy as HM
 
 import M5.Helpers
-import qualified M5.Parse as P
 import M5.Types
-import M5.Expand
-import M5.CmdArgs
+import qualified M5.Parse as P
+import qualified M5.Expand as E
+import qualified M5.CmdArgs as C
 
-
-main = do
-   args@ (Args oo ii) <- getArgs
+mainOld = do
+   args@ (outs, ii) <- C.getArgs
    print args
-   let o = if null oo then def else (mconcat $ parseOut <$> oo)
-       i = if null ii then def else (In $ parseIn <$> ii)
-   go i o
+   {-
+   z <- expandInput <$> C.getConcatIns ii
+   mapM_ (putOut u) (rights outs)
+   -}
+
+expandInput text = runM . E.expand <$> parse P.ast "<todo>" text
+   where runM = runIdentity . flip evalStateT HM.empty . execWriterT
+
+putOut hm dir = case dir of 
+   Left (name, sink) -> maybe (error "no stream") (sinkToIO sink) (HM.lookup name hm)
+   Right sink -> case HM.toList hm of
+      [(_, value)] -> sinkToIO sink value
+      _ -> error "no streams or more streams"
    where
-      go in_ out = do
-         src <- getConcatIns in_
-         case parse P.ast "<todo>" src of
-            Left err -> print err
-            Right res -> let hm = runM $ expand res
-               in po out hm
-      parseOut :: String -> Out
-      parseOut str = def
-      parseIn :: String -> () :| FilePath
-      parseIn str = case str of
-         "-" -> stdin
-         _ -> path str
+      sinkToIO sink raw = let 
+            text = raw2text raw
+         in case sink of
+            Left _ -> TIO.putStr text
+            Right path -> TIO.writeFile path text
+         
 
+main = either (TIO.putStr . T.pack) return =<< main'
 
+main' = runEitherT $ do
+   args@ (C.Args strOuts strIns) <- lift C.cmdArgs'
+   p $ "Args from commandline: " <> show args
+   outDirs <- f $ mapM C.parseOut strOuts 
+   p $ "Calculated out streams: " <> show outDirs
+   inText <- lift $ C.getConcatIns strIns
+   return ()
+   {-
+   Output outHM <- f $ expandInput inText
+   p outDirs
+   mapM_ (putOut' outHM) outDirs
+   -}
+   where f = either (left . ("Parse error: " <>) . show) return
+         p = lift . print
+putOut' hm dir = case dir of 
+   Left (name, sink) -> maybe
+      (left "Output stream '' not defined")
+      (lift . sinkToIO sink)
+      (HM.lookup name hm)
+   Right sink -> case HM.toList hm of
+      [(_, value)] -> lift $ sinkToIO sink value
+      [] -> left "No streams defined in a 'catch all to single sink' output"
+      _  -> left "More than one stream defined in a 'catch all to single sink'"
+   where
+      sinkToIO sink raw = let 
+            text = raw2text raw
+         in case sink of
+            Left _ -> TIO.putStr text
+            Right path -> TIO.writeFile path text

@@ -7,8 +7,12 @@ import Prelude2
 import qualified Data.Text    as T
 import qualified Data.Text.IO as TIO
 import qualified Data.HashMap.Lazy as HM
+import Data.Either (either)
 
+import Control.Applicative ((*>),(<*))
 import Control.Monad (forM_)
+
+import Text.Parsec
 
 import qualified System.Console.CmdArgs as C
 import           System.Console.CmdArgs ((&=))
@@ -16,24 +20,8 @@ import qualified System.Environment as E
 
 import M5.Helpers
 import M5.Types
+import M5.Parse
 
-
--- | A list of sources, where source is either stdin or file
-newtype In  = In [() :| FilePath] deriving (Show)
-stdin = Left ()
-
-instance Default In where def = In [Left ()]
-
-path = Right
-
--- | A map from stream name to an out-stream (bash) or to file
-newtype Out = Out [(Match, Dest)] deriving (Show, Monoid)
-type Match = () :| Word
-type Dest = Int :| FilePath
-
-instance Default Out where def = Out [(matchAll, stdout)]
-stdout = Left 0
-matchAll = Left ()
 
 data Args = Args { oo :: [String], ii :: [String] }
    deriving (C.Typeable, C.Data, Show)
@@ -43,24 +31,38 @@ myargs = Args
    , ii = C.def &= C.args &= C.typFile
    }
 
-getArgs = C.cmdArgs myargs
+getArgs = do
+   Args oo ii <- C.cmdArgs myargs
+   let oo' = mapM parseOut oo
+   return (oo', ii)
 
-getConcatIns (In ins) = T.concat <$> mapM getIn ins
+cmdArgs' = C.cmdArgs myargs
+
+-- | A list of sources, where source is either stdin or file
+newtype In  = In [() :| FilePath] deriving (Show)
+
+instance Default In where def = In [Left ()]
+
+getConcatIns ins = T.concat <$> mapM (read . parse) ins
    where
-      getIn (Left _) = TIO.getContents
-      getIn (Right p) = TIO.readFile p
+      read = either (const TIO.getContents) TIO.readFile
+      parse str = case str of
+         "-" -> Left () -- stdin
+         _ -> Right str -- path ..
 
-putOut (Left i) v = case i of 
-   0 -> TIO.putStr v
-   _ -> error "todo"
-putOut (Right p) v = TIO.writeFile p v
 
-po (Out outs) (Output hm) = mapM_ f outs
+-- | A map from stream name to an out-stream (bash) or to file
+newtype Out = Out [((Name, Sink) :| Sink)] deriving (Show, Monoid)
+type Sink = () :| FilePath
+
+instance Default Out where def = Out [( Right $ Left () )]
+
+parseOut = parse outParser "<outParser>"
    where
-      f (Left () {-match all-}, dest) = forM_ (HM.toList hm) $ \ (name, raw) -> let
-            f = putOut dest
-         in do
-            f ("=> " <> w2t name <> "\n")
-            f $ raw2text raw
-      f (Right name, dest) = maybe (return ()) (putOut dest . raw2text) (HM.lookup name hm)
+      outParser = ((,) <$> word <* gt <*> sink) <:|> sink
+      gt = spacesP *> char '>'
+      sink = spacesP *> sink
+      sink' = (Left  <$> (oneOf "-0" *> return ()) <* eof)
+         <|> (Right <$> many anyChar)
+
 

@@ -70,13 +70,12 @@ word = try (W <$> many1 alphaNum)
    where
       symbol = satisfy $ \ c -> not (isAlphaNum c || c `elem` (sp <> nl <> spc))
 
-spaces = Sp <$> spacesP <?> "spaces"
+spaces = Sp <$> many1 spaceP <?> "spaces"
 eol = EOL <$> many1 (oneOf nl) <?> "eol"
 
-spacesP = many1 spaceP 
+spacesP = many spaceP 
 spaceP = oneOf sp
 
 sp = " \t"
 nl = "\r\n"
 spc = "=\\"
-

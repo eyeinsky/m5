@@ -38,9 +38,10 @@ library
       M5.Helpers,
       M5.Types,
       M5.Parse,
-      M5.Expand
+      M5.Expand,
       -- M5.Expand2
-      M5.CmdArgs
+      M5.CmdArgs,
+      Main
   extensions:    NoImplicitPrelude, TupleSections, TypeSynonymInstances, TypeOperators, ScopedTypeVariables, KindSignatures, Arrows, OverloadedStrings, ExtendedDefaultRules, NoMonomorphismRestriction, FlexibleInstances, GADTs, MultiParamTypeClasses, DeriveDataTypeable, TemplateHaskell, DeriveGeneric, DefaultSignatures, BangPatterns, TypeFamilies, GeneralizedNewtypeDeriving
   build-depends:       base >=4.6 && <4.7
                      , hs-minu

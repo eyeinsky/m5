@@ -21,11 +21,6 @@ import M5.Types
 import M5.Parse
 
 
-
-
-runM = runIdentity . flip evalStateT HM.empty . execWriterT
-
-
 expand :: AST -> M ()
 expand (AST ast) = mapM_ (either eStream eMacroBlock) ast
 
