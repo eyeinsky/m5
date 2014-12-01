@@ -37,8 +37,14 @@ fragment = Fragment
    <*> many (stream <:|> macroblock)
    <?> "fragment"
 
--- rename to blocks?
-ast = AST <$> many (stream <:|> macroblock)
+ast = AST <$>
+      (  
+         ( try nameds
+         <|> ((:) <$> stdout <*> nameds) )
+      )
+   where
+      nameds = many (stream <:|> macroblock)
+      stdout = Left . Stream (W "stdout") <$> text
 
 stream = Stream
    <$> (string "=>" *> many spaceP *> word <* eol)

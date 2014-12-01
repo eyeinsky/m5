@@ -31,11 +31,12 @@ myargs = Args
    , ii = C.def &= C.args &= C.typFile
    }
 
+{-
 getArgs = do
    Args oo ii <- C.cmdArgs myargs
    let oo' = mapM parseOut oo
    return (oo', ii)
-
+-}
 cmdArgs' = C.cmdArgs myargs
 
 -- | A list of sources, where source is either stdin or file
@@ -43,6 +44,7 @@ newtype In  = In [() :| FilePath] deriving (Show)
 
 instance Default In where def = In [Left ()]
 
+getConcatIns []  = TIO.getContents
 getConcatIns ins = T.concat <$> mapM (read . parse) ins
    where
       read = either (const TIO.getContents) TIO.readFile
@@ -57,11 +59,13 @@ type Sink = () :| FilePath
 
 instance Default Out where def = Out [( Right $ Left () )]
 
-parseOut = parse outParser "<outParser>"
+parseOuts [] = Right [( Right $ Left () )]
+parseOuts xs = mapM parseOut xs
    where
+      parseOut = parse outParser "<outParser>"
       outParser = ((,) <$> word <* gt <*> sink) <:|> sink
       gt = spacesP *> char '>'
-      sink = spacesP *> sink
+      sink = spacesP *> sink'
       sink' = (Left  <$> (oneOf "-0" *> return ()) <* eof)
          <|> (Right <$> many anyChar)
 

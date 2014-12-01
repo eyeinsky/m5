@@ -30,3 +30,4 @@ bifmap f g e = case e of
 data U
 
 pack = T.pack
+tshow = pack . show

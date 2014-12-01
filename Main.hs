@@ -45,47 +45,30 @@ import qualified M5.Parse as P
 import qualified M5.Expand as E
 import qualified M5.CmdArgs as C
 
-mainOld = do
-   args@ (outs, ii) <- C.getArgs
-   print args
+
+main = either TIO.putStr (\_ -> return ()) =<< (runEitherT $ do
+   args@ (C.Args strOuts strIns) <- lift C.cmdArgs'
+   sw "Args from commandline: " args
+   outDirs <- f "out directions" $ C.parseOuts strOuts 
+   sw "Calculated out streams: " outDirs
+   inText <- lift $ C.getConcatIns strIns
+   sw "Input: " inText
+   Output outHM <- f "input contents" $ expandInput inText
+   mapM_  (sw "Outstream: ") $ HM.toList outHM
+   mapM_ (putOut outHM) outDirs
+   return ()
+
+   )
    {-
-   z <- expandInput <$> C.getConcatIns ii
-   mapM_ (putOut u) (rights outs)
    -}
+   where f x = either (left . (("Parse error in " <> x) <>) . tshow) return
+         sw intro = lift . TIO.putStrLn . (intro <>) . tshow
 
 expandInput text = runM . E.expand <$> parse P.ast "<todo>" text
    where runM = runIdentity . flip evalStateT HM.empty . execWriterT
 
+
 putOut hm dir = case dir of 
-   Left (name, sink) -> maybe (error "no stream") (sinkToIO sink) (HM.lookup name hm)
-   Right sink -> case HM.toList hm of
-      [(_, value)] -> sinkToIO sink value
-      _ -> error "no streams or more streams"
-   where
-      sinkToIO sink raw = let 
-            text = raw2text raw
-         in case sink of
-            Left _ -> TIO.putStr text
-            Right path -> TIO.writeFile path text
-         
-
-main = either (TIO.putStr . T.pack) return =<< main'
-
-main' = runEitherT $ do
-   args@ (C.Args strOuts strIns) <- lift C.cmdArgs'
-   p $ "Args from commandline: " <> show args
-   outDirs <- f $ mapM C.parseOut strOuts 
-   p $ "Calculated out streams: " <> show outDirs
-   inText <- lift $ C.getConcatIns strIns
-   return ()
-   {-
-   Output outHM <- f $ expandInput inText
-   p outDirs
-   mapM_ (putOut' outHM) outDirs
-   -}
-   where f = either (left . ("Parse error: " <>) . show) return
-         p = lift . print
-putOut' hm dir = case dir of 
    Left (name, sink) -> maybe
       (left "Output stream '' not defined")
       (lift . sinkToIO sink)
