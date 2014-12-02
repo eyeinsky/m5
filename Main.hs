@@ -46,8 +46,14 @@ import qualified M5.Expand as E
 import qualified M5.CmdArgs as C
 
 
-main = either TIO.putStr (\_ -> return ()) =<< (runEitherT $ do
-   args@ (C.Args strOuts strIns) <- lift C.cmdArgs'
+main = either err ignore =<< (runEitherT $ do
+   args@ (C.Args dbg strOuts strIns) <- lift C.cmdArgs'
+
+   let sw :: (Show a) => T.Text -> a -> EitherT T.Text IO ()
+       sw intro showable = if dbg
+         then lift $ TIO.putStrLn (intro <> tshow showable)
+         else return ()
+
    sw "Args from commandline: " args
    outDirs <- f "out directions" $ C.parseOuts strOuts 
    sw "Calculated out streams: " outDirs
@@ -59,10 +65,11 @@ main = either TIO.putStr (\_ -> return ()) =<< (runEitherT $ do
    return ()
 
    )
-   {-
-   -}
-   where f x = either (left . (("Parse error in " <> x) <>) . tshow) return
-         sw intro = lift . TIO.putStrLn . (intro <>) . tshow
+
+   where
+      f x = either (left . (("Parse error in " <> x) <>) . tshow) return
+      err txt = TIO.putStrLn ("ERROR: "<> txt)
+      ignore = const (return ())
 
 expandInput text = runM . E.expand <$> parse P.ast "<todo>" text
    where runM = runIdentity . flip evalStateT HM.empty . execWriterT
@@ -83,3 +90,7 @@ putOut hm dir = case dir of
          in case sink of
             Left _ -> TIO.putStr text
             Right path -> TIO.writeFile path text
+
+
+
+

@@ -23,11 +23,12 @@ import M5.Types
 import M5.Parse
 
 
-data Args = Args { oo :: [String], ii :: [String] }
+data Args = Args { dbg :: Bool, oo :: [String], ii :: [String] }
    deriving (C.Typeable, C.Data, Show)
 
 myargs = Args
-   { oo = C.def
+   { dbg = False
+   , oo = C.def
    , ii = C.def &= C.args &= C.typFile
    }
 

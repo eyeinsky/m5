@@ -22,7 +22,7 @@ import M5.Parse
 
 
 expand :: AST -> M ()
-expand (AST ast) = mapM_ (either eStream eMacroBlock) ast
+expand (AST bare ast) = mapM_ (either eStream eMacroBlock) (Left bare : ast)
 
 eMacroBlock :: MacroBlock -> M ()
 eMacroBlock (MacroBlock lhs text) = define lhs =<< eText text

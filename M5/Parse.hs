@@ -5,7 +5,7 @@ module M5.Parse where
 import Prelude2
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Text.Parsec hiding (space, spaces, Line, Stream)
+import Text.Parsec hiding (space, spaces, Line, Stream, token)
 import Text.Parsec.Text
 import Data.Char
 import Data.Either (either)
@@ -26,49 +26,50 @@ import M5.Types
 
 
 
+{-
 -- reparse :: Raw -> Fragment
-reparse lines = u -- Fragment [Right $ Left $ Stream u $ map Left lines]
+reparse lins = u -- Fragment [Right $ Left $ Stream u $ map Left lins]
    where x = x
- 
-
 
 fragment = Fragment
-   <$> text
+   <$> body
    <*> many (stream <:|> macroblock)
    <?> "fragment"
+-}
 
-ast = AST <$>
-      (  
-         ( try nameds
-         <|> ((:) <$> stdout <*> nameds) )
-      )
-   where
-      nameds = many (stream <:|> macroblock)
-      stdout = Left . Stream (W "stdout") <$> text
+
+ast = AST <$> stdout <*> many (stream <:|> macroblock)
+   where stdout = Stream (W "stdout") <$> (try body <|> return [])
 
 stream = Stream
    <$> (string "=>" *> many spaceP *> word <* eol)
-   <*> text
+   <*> body
    <?> "stream"
 
 macroblock = MacroBlock
    <$> (many spaceP *> char '=' *> lhs <* eol)
-   <*> many (line <:|> macro)
+   <*> many line
    <?> "macroblock"
-
-text = many1 (line <:|> macro) <?> "text"
-
 macro = Macro
    <$> (lhs <* char '=')
-   <*> (many spaceP *> line)
+   <*> (many spaceP *> textline)
    <?> "macro"
-
 lhs = LHS
    <$> (many spaceP *> word <* many spaceP)
    <*> (sepEndBy word $ many spaceP)
    <?> "lhs"
 
-line = (,) <$> many (word <:|> spaces) <*> eol <?> "line"
+
+body = many1 line <?> "body"
+
+line = textline <:|> macro
+textline' = (,) <$> many token <*> eol <?> "textline"
+token = word <:|> spaces <?> "token"
+
+textline = try full <|> partial <?> "textline"
+   where 
+      full = (,) <$> many token  <*> eol
+      partial = (,) <$> many1 token <*> (eof *> return (EOL ""))
 
 word = try (W <$> many1 alphaNum)
    <|>    Sy <$> many1 symbol
@@ -77,11 +78,16 @@ word = try (W <$> many1 alphaNum)
       symbol = satisfy $ \ c -> not (isAlphaNum c || c `elem` (sp <> nl <> spc))
 
 spaces = Sp <$> many1 spaceP <?> "spaces"
-eol = EOL <$> many1 (oneOf nl) <?> "eol"
+eol = EOL <$> eolP <?> "eol"
 
 spacesP = many spaceP 
 spaceP = oneOf sp
+eolP = many1 (oneOf nl)
 
 sp = " \t"
 nl = "\r\n"
 spc = "=\\"
+
+
+
+pt p (s :: T.Text) = parseTest p s

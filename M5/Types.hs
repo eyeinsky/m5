@@ -25,7 +25,7 @@ import M5.Helpers
 -- Syntax
 -- 
 
-newtype AST = AST [Stream :| MacroBlock] deriving Show
+data AST = AST Stream [Stream :| MacroBlock] deriving Show
 data MacroBlock = MacroBlock LHS Text deriving (Show)
 data Macro = Macro LHS Line deriving (Show)
 data LHS = LHS { name :: Name, args :: FormalArgs } deriving (Show)
@@ -39,9 +39,14 @@ type Token = Word :| Spaces
 data Word = W String | Sy String deriving (Eq, Show, Generic)
 instance Hashable Word
 data Spaces = Sp String deriving (Show)
-data EOL = EOL String deriving (Show)
+data EOL = EOL String
+         | EOF deriving (Show)
 type F = String
 
+
+
+data Body = Body Text [Token]
+   deriving (Show)
 
 data Fragment = Fragment
    { fragText :: Text
