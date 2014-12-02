@@ -5,7 +5,7 @@ module M5.Parse where
 import Prelude2
 import qualified Data.Text as T
 import qualified Data.Text.IO as TIO
-import Text.Parsec hiding (space, spaces, Line, Stream, token)
+import Text.Parsec hiding (space, spaces, Line, Stream, token, (<|>))
 import Text.Parsec.Text
 import Data.Char
 import Data.Either (either)
@@ -39,7 +39,7 @@ fragment = Fragment
 
 
 ast = AST <$> stdout <*> many (stream <:|> macroblock)
-   where stdout = Stream (W "stdout") <$> (try body <|> return [])
+   where stdout = Stream (W "stdout") <$> (body <|> return [])
 
 stream = Stream
    <$> (string "=>" *> many spaceP *> word <* eol)
@@ -66,16 +66,18 @@ line = textline <:|> macro
 textline' = (,) <$> many token <*> eol <?> "textline"
 token = word <:|> spaces <?> "token"
 
-textline = try full <|> partial <?> "textline"
+textline = full <|> partial <?> "textline"
    where 
       full = (,) <$> many token  <*> eol
       partial = (,) <$> many1 token <*> (eof *> return (EOL ""))
 
-word = try (W <$> many1 alphaNum)
-   <|>    Sy <$> many1 symbol
+word = W  <$> many1 alphaNum
+   <|> Sy <$> many1 symbol
    <?> "word"
    where
       symbol = satisfy $ \ c -> not (isAlphaNum c || c `elem` (sp <> nl <> spc))
+
+
 
 spaces = Sp <$> many1 spaceP <?> "spaces"
 eol = EOL <$> eolP <?> "eol"

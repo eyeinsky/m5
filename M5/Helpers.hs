@@ -5,7 +5,8 @@ import Prelude2
 import qualified Data.Text.IO as TIO
 import qualified Data.Text    as T  
 
-import Text.Parsec
+import Text.Parsec hiding ((<|>))
+import qualified Text.Parsec as P
 
 --
 -- Helpers
@@ -14,9 +15,13 @@ getTest file = TIO.readFile ("tests/" <> file) :: IO T.Text
 u = undefined
 
 
-parseEither l r = try (Left <$> l) <|> (Right <$> r)
+parseEither l r = (Left <$> l) <|> (Right <$> r)
 (<:|>) = parseEither 
 infixl 5 <:|>
+
+l <|> r = try l P.<|> r
+infixr 1 <|>
+
 
 infixl 5 :|
 type (:|) = Either

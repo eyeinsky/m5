@@ -12,7 +12,7 @@ import Data.Either (either)
 import Control.Applicative ((*>),(<*))
 import Control.Monad (forM_)
 
-import Text.Parsec
+import Text.Parsec hiding ((<|>))
 
 import qualified System.Console.CmdArgs as C
 import           System.Console.CmdArgs ((&=))
@@ -68,6 +68,6 @@ parseOuts xs = mapM parseOut xs
       gt = spacesP *> char '>'
       sink = spacesP *> sink'
       sink' = (Left  <$> (oneOf "-0" *> return ()) <* eof)
-         <|> (Right <$> many anyChar)
+         <|>  (Right <$> many anyChar)
 
 
