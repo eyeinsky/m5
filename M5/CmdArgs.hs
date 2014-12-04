@@ -23,22 +23,29 @@ import M5.Types
 import M5.Parse
 
 
-data Args = Args { dbg :: Bool, oo :: [String], ii :: [String] }
-   deriving (C.Typeable, C.Data, Show)
+data Args = Args
+   { dbg    :: Bool     -- debug
+   , overwrite :: Bool  -- force owerwriting of files
+   , oo     :: [String]
+   , ii     :: [String]
+   } deriving (C.Typeable, C.Data, Show)
 
 myargs = Args
-   { dbg = False
-   , oo = C.def
-   , ii = C.def &= C.args &= C.typFile
-   }
+   { dbg       = False              
+               &= C.help "print debug info to stdout"
+   , overwrite = False &= C.name "f"
+               &= C.help "owerwrite existing files"
+   , oo        = C.def             
+               &= C.help "map streams to files or stdout"
+   , ii        = C.def &= C.args &= C.typFile
+   } &= C.program "m5"
+     &= C.summary "m5 v0.1"
 
-{-
-getArgs = do
-   Args oo ii <- C.cmdArgs myargs
-   let oo' = mapM parseOut oo
-   return (oo', ii)
--}
-cmdArgs' = C.cmdArgs myargs
+cmdArgs = C.cmdArgs myargs
+
+
+
+
 
 -- | A list of sources, where source is either stdin or file
 newtype In  = In [() :| FilePath] deriving (Show)
@@ -69,5 +76,3 @@ parseOuts xs = mapM parseOut xs
       sink = spacesP *> sink'
       sink' = (Left  <$> (oneOf "-0" *> return ()) <* eof)
          <|>  (Right <$> many anyChar)
-
-

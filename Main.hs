@@ -46,8 +46,8 @@ import qualified M5.Expand as E
 import qualified M5.CmdArgs as C
 
 
-main = either err ignore =<< (runEitherT $ do
-   args@ (C.Args dbg strOuts strIns) <- lift C.cmdArgs'
+main = either err ignore =<<$ runEitherT $ do
+   args@ (C.Args dbg ovr strOuts strIns) <- lift C.cmdArgs
 
    let sw :: (Show a) => T.Text -> a -> EitherT T.Text IO ()
        sw intro showable = if dbg
@@ -60,18 +60,17 @@ main = either err ignore =<< (runEitherT $ do
    inText <- lift $ C.getConcatIns strIns
    sw "Input: " inText
    Output outHM <- f "input contents" $ expandInput inText
-   mapM_  (sw "Outstream: ") $ HM.toList outHM
+   mapM_ (sw "Outstream: ") $ HM.toList outHM
    mapM_ (putOut outHM) outDirs
    return ()
-
-   )
 
    where
       f x = either (left . (("Parse error in " <> x) <>) . tshow) return
       err txt = TIO.putStrLn ("ERROR: "<> txt)
       ignore = const (return ())
 
-expandInput text = runM . E.expand <$> parse P.ast "<todo>" text
+cfg = P.ParserConf "=" "%>" "\\"
+expandInput text = runM . E.expand <$> P.myparse cfg text
    where runM = runIdentity . flip evalStateT HM.empty . execWriterT
 
 

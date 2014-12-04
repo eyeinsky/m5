@@ -15,6 +15,7 @@ import Control.Applicative ((*>),(<*))
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Writer
+import Control.Monad.Reader
 
 import qualified Data.HashMap.Lazy as HM
 import Data.Hashable
@@ -35,14 +36,39 @@ fragment = Fragment
    <$> body
    <*> many (stream <:|> macroblock)
    <?> "fragment"
+
 -}
+
+--
+-- Parser with a config:
+--
+
+data ParserConf = ParserConf
+   { pcDef      :: String
+   , pcStream   :: String
+   , pcEsc      :: String
+   }
+
+type ParserMonad = ParsecT T.Text () (Reader ParserConf) () 
+                -- ParsecT s      u  m                   a
+
+{- runParserT :: Stream s m t
+      => ParsecT s u m a -> u -> SourceName -> s -> m (Either ParseError a)
+
+   expandInput text = runM . E.expand <$> parse P.ast "<todo>" text
+      where runM = runIdentity . flip evalStateT HM.empty . execWriterT
+-}
+
+myparse :: ParserConf -> T.Text -> Either ParseError AST
+myparse cfg text = runReader (runParserT ast () "<todo>" text) cfg
+
 
 
 ast = AST <$> stdout <*> many (stream <:|> macroblock)
    where stdout = Stream (W "stdout") <$> (body <|> return [])
 
 stream = Stream
-   <$> (string "=>" *> many spaceP *> word <* eol)
+   <$> ((asks pcStream >>= string) *> many spaceP *> word <* eol)
    <*> body
    <?> "stream"
 

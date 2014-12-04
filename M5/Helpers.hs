@@ -5,6 +5,7 @@ import Prelude2
 import qualified Data.Text.IO as TIO
 import qualified Data.Text    as T  
 
+import Control.Monad
 import Text.Parsec hiding ((<|>))
 import qualified Text.Parsec as P
 
@@ -22,6 +23,10 @@ infixl 5 <:|>
 l <|> r = try l P.<|> r
 infixr 1 <|>
 
+(=<<$) = (=<<)
+infixr 0 =<<$
+(>>=$) = (>>=)
+infixr 0 >>=$
 
 infixl 5 :|
 type (:|) = Either

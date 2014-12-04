@@ -3,15 +3,19 @@
 
 =|pipe1 # send to pipe1
 
-=>file1 # send to file1
+=> file1 # send to file1
 
-f a b = "a --- b"             # define macro f, no output, not even a newlne
+   xxx
+
+f a b="a --- b"             # define macro f, no output, not even a newlne
 f y z \= ösdlfjölasd          # y --- z = ösdlfjölasd
 
 f hei hoo                     # hei --- hoo
 f "hei " " hoo 000 f jou joi" # hei  ---  hoo 000 jou --- joi
 
 =!echo                        # echo the contents of the following
+
+case
 
 dsfasdf
 asd
