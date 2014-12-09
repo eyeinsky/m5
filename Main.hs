@@ -55,7 +55,7 @@ main = either err ignore =<<$ runEitherT $ do
          else return ()
 
    sw "Args from commandline: " args
-   outDirs <- f "out directions" $ C.parseOuts strOuts 
+   outDirs <- f "out directions" $ C.parseOuts cfg strOuts 
    sw "Calculated out streams: " outDirs
    inText <- lift $ C.getConcatIns strIns
    sw "Input: " inText
@@ -69,8 +69,9 @@ main = either err ignore =<<$ runEitherT $ do
       err txt = TIO.putStrLn ("ERROR: "<> txt)
       ignore = const (return ())
 
-cfg = P.ParserConf "=" "%>" "\\"
-expandInput text = runM . E.expand <$> P.myparse cfg text
+cfg = P.ParserConf "=" "=>" "\\"
+
+expandInput text = runM . E.expand <$> P.parseAst cfg text
    where runM = runIdentity . flip evalStateT HM.empty . execWriterT
 
 

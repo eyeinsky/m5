@@ -1,0 +1,49 @@
+Bare stdout here
+
+An empty line preceedint this.
+
+f1 a b c = f1 takes three args. In this instance they have values <a>, <b> and <c>
+
+f1 Hey there you. Some other text after fundion..
+
+Only one end-of-line is kept following this -- the other as the last is not included.
+
+=> stream1
+Stream1 starts, lets try the macro here: f1 f1, see?
+
+Now, a block macro:
+
+= f2
+Am in f2.
+Usng the one-line macro again: f1 f2.
+Again we see, that a macro within its own definition is not expanded.
+Also, as f-one takes three args, but we gave it two last time around,
+then the third was taken as an empty string.
+
+f3 x = A third macro, f3. Arg was <x>
+
+Using it here: f3 now.
+
+= f4 one two
+
+Yet another block definition.
+
+=> stream2
+
+Stream 2 is here.
+
+Will now include the block defined before:
+<<<
+f2
+>>>
+
+F4:
+<<< f4 >>>
+
+=> stream3
+
+Add all here:
+1: <<<f1 a b c>>>
+2: <<<f2 a b c>>>
+3: <<<f3 a b c>>>
+4: <<<f4 a b c>>>

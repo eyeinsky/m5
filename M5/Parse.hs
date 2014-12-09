@@ -26,19 +26,6 @@ import M5.Helpers
 import M5.Types
 
 
-
-{-
--- reparse :: Raw -> Fragment
-reparse lins = u -- Fragment [Right $ Left $ Stream u $ map Left lins]
-   where x = x
-
-fragment = Fragment
-   <$> body
-   <*> many (stream <:|> macroblock)
-   <?> "fragment"
-
--}
-
 --
 -- Parser with a config:
 --
@@ -48,23 +35,20 @@ data ParserConf = ParserConf
    , pcStream   :: String
    , pcEsc      :: String
    }
+askDef = asks pcDef
+askStream = asks (\c -> pcDef c <> pcStream c)
 
-type ParserMonad = ParsecT T.Text () (Reader ParserConf) () 
-                -- ParsecT s      u  m                   a
-
-{- runParserT :: Stream s m t
-      => ParsecT s u m a -> u -> SourceName -> s -> m (Either ParseError a)
-
-   expandInput text = runM . E.expand <$> parse P.ast "<todo>" text
-      where runM = runIdentity . flip evalStateT HM.empty . execWriterT
--}
-
-myparse :: ParserConf -> T.Text -> Either ParseError AST
-myparse cfg text = runReader (runParserT ast () "<todo>" text) cfg
+type ParserMonad = ParsecT T.Text ()     (Reader ParserConf) () 
+--                 ParsecT stream stateu baseMonad           return
 
 
+parseAst :: ParserConf -> T.Text -> Either ParseError AST
+parseAst cfg text = myparse cfg ast text
 
-ast = AST <$> stdout <*> many (stream <:|> macroblock)
+myparse cfg parser text = runReader (runParserT parser () "<todo>" text) cfg
+
+
+ast = AST <$> stdout <*> many (stream <:|> macroblock) <* eof
    where stdout = Stream (W "stdout") <$> (body <|> return [])
 
 stream = Stream
@@ -72,12 +56,13 @@ stream = Stream
    <*> body
    <?> "stream"
 
+
 macroblock = MacroBlock
-   <$> (many spaceP *> char '=' *> lhs <* eol)
+   <$> (many spaceP *> (askDef >>= string) *> lhs <* eol)
    <*> many line
    <?> "macroblock"
 macro = Macro
-   <$> (lhs <* char '=')
+   <$> (lhs <* (askDef >>= string))
    <*> (many spaceP *> textline)
    <?> "macro"
 lhs = LHS
@@ -87,24 +72,18 @@ lhs = LHS
 
 
 body = many1 line <?> "body"
-
 line = textline <:|> macro
-textline' = (,) <$> many token <*> eol <?> "textline"
-token = word <:|> spaces <?> "token"
-
 textline = full <|> partial <?> "textline"
-   where 
-      full = (,) <$> many token  <*> eol
-      partial = (,) <$> many1 token <*> (eof *> return (EOL ""))
-
+   where full = (,) <$> many token  <*> eol
+         partial = (,) <$> many1 token <*> (eof *> return (EOL ""))
+token = word <:|> spaces <?> "token"
 word = W  <$> many1 alphaNum
    <|> Sy <$> many1 symbol
    <?> "word"
    where
-      symbol = satisfy $ \ c -> not (isAlphaNum c || c `elem` (sp <> nl <> spc))
-
-
-
+      symbol = do
+         def <- askDef
+         satisfy $ \ c -> not (isAlphaNum c || c `elem` (sp <> nl <> def))
 spaces = Sp <$> many1 spaceP <?> "spaces"
 eol = EOL <$> eolP <?> "eol"
 
@@ -114,8 +93,6 @@ eolP = many1 (oneOf nl)
 
 sp = " \t"
 nl = "\r\n"
-spc = "=\\"
-
 
 
 pt p (s :: T.Text) = parseTest p s

@@ -30,6 +30,7 @@ data Args = Args
    , ii     :: [String]
    } deriving (C.Typeable, C.Data, Show)
 
+
 myargs = Args
    { dbg       = False              
                &= C.help "print debug info to stdout"
@@ -42,9 +43,6 @@ myargs = Args
      &= C.summary "m5 v0.1"
 
 cmdArgs = C.cmdArgs myargs
-
-
-
 
 
 -- | A list of sources, where source is either stdin or file
@@ -67,10 +65,10 @@ type Sink = () :| FilePath
 
 instance Default Out where def = Out [( Right $ Left () )]
 
-parseOuts [] = Right [( Right $ Left () )]
-parseOuts xs = mapM parseOut xs
+parseOuts cfg [] = Right [( Right $ Left () )]
+parseOuts cfg xs = mapM parseOut xs
    where
-      parseOut = parse outParser "<outParser>"
+      parseOut = myparse cfg outParser
       outParser = ((,) <$> word <* gt <*> sink) <:|> sink
       gt = spacesP *> char '>'
       sink = spacesP *> sink'
