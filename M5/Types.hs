@@ -77,16 +77,17 @@ w2t (Sy str) = pack str
 -- | The output monad is a writer.thus unionWith (<>)
 -- is what we want (rather than the default union, which keeps value of the
 -- first key).
-type M = WriterT Output (StateT Macros Identity)
+type M = WriterT Collector (StateT Macros Identity)
 
 -- | Output streams are stored in a key-value map of stream name to stream
 -- contents. The monoid instance for the writer is defined with 'unionWith (<>)'
 -- as it concatenates the values.
-newtype Output = Output { fromOutput :: HM.HashMap Word Raw }
+newtype Collector = Collector { fromCollector :: CollectorR }
+type CollectorR = HM.HashMap Word Raw
 
-instance Monoid Output where
-   mempty = Output HM.empty
-   mappend (Output a) (Output b) = Output (a `f` b)
+instance Monoid Collector where
+   mempty = Collector HM.empty
+   mappend (Collector a) (Collector b) = Collector (a `f` b)
       where f = HM.unionWith (<>)
 
 -- | Macro definitions are kept in a map from macro name to macro definition.
@@ -96,3 +97,4 @@ type Macros = HM.HashMap Name Def
 -- optimization would be to have a body with pre-found holes (for speed).
 type Def = (FormalArgs, Raw)
 type ArgMap = HM.HashMap Word Raw
+

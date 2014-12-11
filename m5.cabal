@@ -30,6 +30,7 @@ executable m5
                      , unordered-containers
                      , hashable
                      , cmdargs
+                     , directory
   -- hs-source-dirs:      
   default-language:    Haskell2010
 
@@ -39,8 +40,6 @@ library
       M5.Types,
       M5.Parse,
       M5.Expand,
-      -- M5.Expand2
-      M5.CmdArgs,
       Main
   extensions:    NoImplicitPrelude, TupleSections, TypeSynonymInstances, TypeOperators, ScopedTypeVariables, KindSignatures, Arrows, OverloadedStrings, ExtendedDefaultRules, NoMonomorphismRestriction, FlexibleInstances, GADTs, MultiParamTypeClasses, DeriveDataTypeable, TemplateHaskell, DeriveGeneric, DefaultSignatures, BangPatterns, TypeFamilies, GeneralizedNewtypeDeriving
   build-depends:       base >=4.6 && <4.7
@@ -50,5 +49,6 @@ library
                      , unordered-containers
                      , hashable
                      , cmdargs
+                     , directory
   -- hs-source-dirs:      
   default-language:    Haskell2010

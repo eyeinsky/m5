@@ -1,4 +1,5 @@
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE DeriveGeneric #-}
 module M5.Helpers where
 
 import Prelude2
@@ -9,6 +10,8 @@ import Control.Monad
 import Text.Parsec hiding ((<|>))
 import qualified Text.Parsec as P
 
+import Data.Typeable
+import Data.Data
 --
 -- Helpers
 --
@@ -37,7 +40,7 @@ bifmap f g e = case e of
    Left l -> Left <$> f l
    Right r -> Right <$> g r
 
-data U
+data U = U deriving (Typeable, Data, Show)
 
 pack = T.pack
 tshow = pack . show
