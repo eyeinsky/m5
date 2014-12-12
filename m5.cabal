@@ -31,6 +31,8 @@ executable m5
                      , hashable
                      , cmdargs
                      , directory
+                     , deepseq-generics
+                     , random
   -- hs-source-dirs:      
   default-language:    Haskell2010
 
@@ -50,5 +52,7 @@ library
                      , hashable
                      , cmdargs
                      , directory
+                     , deepseq-generics
+                     , random
   -- hs-source-dirs:      
   default-language:    Haskell2010

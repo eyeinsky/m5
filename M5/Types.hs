@@ -1,5 +1,6 @@
 {-# LANGUAGE DeriveGeneric #-}
 {-# LANGUAGE TypeOperators #-}
+{-# LANGUAGE StandaloneDeriving #-}
 module M5.Types where
 
 import Prelude2
@@ -8,15 +9,14 @@ import Data.Either (either)
 import GHC.Generics (Generic)
 
 import qualified Data.Text as T -- GHC.Generics (Generic)
-
+import qualified Data.HashMap.Lazy as HM
 
 
 import Control.Monad.Identity
 import Control.Monad.State
 import Control.Monad.Writer
-import qualified Data.HashMap.Lazy as HM
 
-
+import Control.DeepSeq.Generics (NFData(..), genericRnf)
 
 import M5.Helpers
 
@@ -38,11 +38,14 @@ type Line = ([Token], EOL)
 type Token = Word :| Spaces
 data Word = W String | Sy String deriving (Eq, Show, Generic)
 instance Hashable Word
-data Spaces = Sp String deriving (Show)
-data EOL = EOL String
-         | EOF deriving (Show)
+data Spaces = Sp String deriving (Show, Generic)
+data EOL = EOL String | EOF deriving (Show, Generic)
 type F = String
 
+
+instance NFData EOL where rnf = genericRnf
+instance NFData Spaces where rnf = genericRnf
+instance NFData Word where rnf = genericRnf
 
 
 data Body = Body Text [Token]
