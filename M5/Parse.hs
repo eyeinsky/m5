@@ -43,9 +43,9 @@ type ParserMonad = ParsecT T.Text ()     (Reader ParserConf) ()
 
 
 parseAst :: ParserConf -> T.Text -> Either ParseError AST
-parseAst cfg text = myparse cfg ast text
+parseAst cfg text = cfgParse cfg ast text
 
-myparse cfg parser text = runReader (runParserT parser () "<todo>" text) cfg
+cfgParse cfg parser text = runReader (runParserT parser () "<todo>" text) cfg
 
 
 ast = AST <$> stdout <*> many (stream <:|> macroblock) <* eof

@@ -6,3 +6,7 @@
    and no output mappings need to be defined on the commandline.
 
 * figure out an elaborate testing scheme, so I wouldn't f... up
+
+* try to use common command line conventions, e.g
+  http://www.faqs.org/docs/artu/ch10s05.html for command line
+  and others. See also the flag reference of m4. 

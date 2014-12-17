@@ -16,7 +16,6 @@ import Data.Data
 -- Helpers
 --
 getTest file = TIO.readFile ("tests/" <> file) :: IO T.Text
-u = undefined
 
 
 parseEither l r = (Left <$> l) <|> (Right <$> r)
@@ -25,11 +24,6 @@ infixl 5 <:|>
 
 l <|> r = try l P.<|> r
 infixr 1 <|>
-
-(=<<$) = (=<<)
-infixr 0 =<<$
-(>>=$) = (>>=)
-infixr 0 >>=$
 
 infixl 5 :|
 type (:|) = Either
@@ -41,6 +35,7 @@ bifmap f g e = case e of
    Right r -> Right <$> g r
 
 data U = U deriving (Typeable, Data, Show)
+u = undefined
 
 pack = T.pack
 tshow = pack . show

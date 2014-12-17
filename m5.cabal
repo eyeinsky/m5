@@ -24,12 +24,12 @@ executable m5
   -- other-modules:       
   extensions:    NoImplicitPrelude, TupleSections, TypeSynonymInstances, TypeOperators, ScopedTypeVariables, KindSignatures, Arrows, OverloadedStrings, ExtendedDefaultRules, NoMonomorphismRestriction, FlexibleInstances, GADTs, MultiParamTypeClasses, DeriveDataTypeable, TemplateHaskell, DeriveGeneric, DefaultSignatures, BangPatterns, TypeFamilies, GeneralizedNewtypeDeriving
   build-depends:       base >=4.6 && <4.7
-                     , hs-minu
+                     , hs-minu == 0.1.6.8
                      , parsec >= 3.1.7
                      , text, mtl
                      , unordered-containers
                      , hashable
-                     , cmdargs
+                     , cmdargs, optparse-applicative
                      , directory
                      , deepseq-generics
                      , random
@@ -50,7 +50,7 @@ library
                      , text, mtl
                      , unordered-containers
                      , hashable
-                     , cmdargs
+                     , cmdargs, optparse-applicative
                      , directory
                      , deepseq-generics
                      , random
