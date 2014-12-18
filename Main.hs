@@ -29,7 +29,7 @@ import Text.Parsec.Text
 import Data.Char
 import Data.Word (Word64)
 import Data.List (concat)
-import Data.Either (either, lefts, rights)
+import Data.Either (either, lefts, rights, partitionEithers)
 import qualified Data.HashMap.Lazy as HM
 
 import Control.Applicative ((*>),(<*), pure)
@@ -54,38 +54,39 @@ import qualified M5.Expand as E
 
 
 -- * Main
-{- TODO:
-   * the <<< >>> delimiting debugger output is hacky..
-   -}
-main = runMain $ do
-   args <- lift $ O.execParser optp
-   -- args <- u
 
-   let sw :: (Show a) => (T.Text -> T.Text) -> a -> EitherT T.Text IO ()
-       sw = mkDbg (debug args)
-       mBase = baseDir args
-       outDirs = maybe id addBase mBase $ oo args
-       inDirs = let i = ii args in if null i then def else i
-
-   sw ("Arguments: " <>) args
-   sw ("Calculated in streams: " <>) inDirs
-   sw ("Calculated out streams: " <>) outDirs
-
-   inText <- readInputs inDirs
-   rand <- tshow <$> lift (randomIO :: IO Word64)
-   sw (\x -> "Input was:\n<<< " <> rand <> "\n"
-          <> x <> ">>> " <> rand)
-      inText
+main = do
+   x <- O.execParser optp
+   case x of 
+      Left args -> runMain $ do
    
-   coll <- f "input contents" $ expandInput inText
-   mapM_ (sw ("Outstream: "<>)) $ HM.toList $ fromCollector coll
-   
-   maybe (return ()) (lift . Dir.createDirectoryIfMissing True) mBase -- create directory
-   putOuts (pretend args) (overwrite args) coll outDirs
-   return ()
+         let sw :: (Show a) => (T.Text -> T.Text) -> a -> EitherT T.Text IO ()
+             sw = mkDbg (debug args)
+             mBase = baseDir args
+             outSpecs = maybe id addBase mBase $ oo args :: OutSpecs
+             inDirs = let i = ii args in if null i then def else i
 
-   where
-      f x = either (left . (("Parse error in " <> x) <>) . tshow) return
+         outActSpec <- prepareOuts (overwrite args) (pretend args) outSpecs
+
+         sw ("Arguments: " <>) args
+         sw ("Calculated in streams: " <>) inDirs
+         sw ("Calculated out streams: " <>) outSpecs
+
+         inText <- readInputs inDirs
+         rand <- tshow <$> lift (randomIO :: IO Word64)
+         sw (\x -> "Input was:\n<<< " <> rand <> "\n"
+                <> x <> ">>> " <> rand)
+            inText
+         
+         result <- f "input contents" $ expandInput inText
+         mapM_ (sw ("Outstream: "<>)) $ HM.toList $ fromCollector result
+         
+         maybe (return ()) (lift . Dir.createDirectoryIfMissing True) mBase -- create directory
+
+         return ()
+
+         where
+            f x = either (left . (("Parse error in " <> x) <>) . tshow) return
 
 
 type MainM = EitherT T.Text IO
@@ -111,35 +112,21 @@ mkDbg dbg f showable = if dbg
 
 -- * Act on inputs and outputs
 
+
 expandInput text = runM . E.expand <$> parseAst cfg text
    where runM = runIdentity . flip evalStateT HM.empty . execWriterT
 
 
-putOuts :: Bool -> Bool -> Collector -> OutSpecs -> MainM ()
-putOuts pretend ovr (Collector hm) outDirs = do
-   if ovr then do_ else checkDo
-   when pretend $ lift $ TIO.putStrLn "Pretended to do everything but writing to outputs.."
-   where
-      outputter :: Outputter
-      outputter = if pretend
-         then (\ os raw -> DeepSeq.deepseq raw (return ()))
-         else sinkToIO
+-- 
 
-      checkDo :: MainM ()
-      checkDo = bool do_ error . or =<< mapM check outDirs
-
-      do_ :: MainM ()
-      do_ = mapM_ (putOut outputter hm) outDirs
-
-      check :: OutSpec -> MainM Bool
-      check = maybe (return False) (lift . Dir.doesFileExist) . getSinkFilePath
-      error :: MainM a
-      error = left "some files exist"
-
-type Outputter = OutStream -> Raw -> IO ()
-
-putOut :: Outputter -> CollectorR -> OutSpec -> MainM () 
-putOut outputter hm dir = case dir of 
+combine :: CollectorR -> [OutActionSpec] -> MainM ()
+combine hm li = let
+      lifted = ([],) <$> hm :: HM.HashMap Word ([OutActionSpec],Raw)
+      (nameds, anons) = partitionEithers li
+   in if not (null anons)
+      then u
+      else u
+   {-
    Left (name, sink) -> maybe
       (left $ "Collector stream '"<>w2t name<>"' not defined")
       (lift . outputter sink)
@@ -148,55 +135,108 @@ putOut outputter hm dir = case dir of
       [(_, value)] -> lift $ outputter sink value
       [] -> left "No streams defined in a 'catch all to single sink' output"
       _  -> left "More than one stream defined in a 'catch all to single sink'"
+      -}
+   where
+      x=x
 
-sinkToIO :: OutStream -> Raw -> IO () 
-sinkToIO sink raw = let 
-      text = raw2text raw
-   in case sink of
-      StdOut -> TIO.putStr text
-      StdErr -> TIO.hPutStr stderr text
-      OutFile path -> TIO.writeFile path text
+
+-- ** Prepare output streams
+
+-- | Evaluate OutSpecs to OutActionSpec. If overwrite is False
+-- then return early with the list of files that do.
+prepareOuts :: Bool -> Bool -> [OutSpec] -> MainM [OutActionSpec]
+prepareOuts ovr pret specs = do
+   (existing, rest) <- partitionEithers <$> (lift $ mapM f specs)
+   if null existing
+      then return rest
+      else left $ "Files exist: " <> tshow existing
+   where 
+      g = specToAction ovr pret
+      f :: OutSpec -> IO (Either FilePath OutActionSpec)
+      f (Left (name, streamDef)) = do 
+         e <- g streamDef
+         return $ case e of
+            Left fp -> Left fp
+            Right act -> Right (Left (name, act))
+      f (Right streamDef) = do
+         e <- g streamDef
+         return $ case e of
+            Left fp -> Left fp
+            Right act -> Right (Right act)
+
+-- | Converts an output destination to either a Left if
+-- overwrite is on and file exists. Otherwise returns a
+-- function that outputs the 'Raw' to its destination.
+specToAction
+   :: Bool                       -- ^ whether to overwrite
+   -> Bool                       -- ^ whether to pretend
+   -> OutStream                  -- ^ outstream, i.e sink
+   -> IO (FilePath :| OutAction) -- ^ Either file exists or write action
+specToAction ovr pretend sink = case sink of
+   StdOut -> ret $ TIO.putStr . raw2text
+   StdErr -> ret $ TIO.hPutStr stderr . raw2text
+   OutFile path -> let write = handlePretend (TIO.writeFile path . raw2text)
+      in if ovr
+         then rr write
+         else bool (Left path) (Right write) <$> Dir.doesFileExist path
+   where
+      rr = return . Right 
+      ret act = return $ Right $ handlePretend act
+      handlePretend doReally raw = if pretend
+         then DeepSeq.deepseq raw (return ())
+         else doReally raw
+      
+
 
 
 
 -- * Argument parsing
 
-data Args = Args
-   { debug     :: Bool        -- ^ Debug
-   , overwrite :: Bool        -- ^ Allow owerwriting of files, default is no overwriting
-   , pretend   :: Bool
-   , baseDir   :: Maybe String  -- ^ Base directory for output files
-   , oo        :: OutSpecs      -- ^ Output streams: files, stdout and stderr
-   , ii        :: InSpecs       -- ^ Input streams: files and stdin
 
-   -- TODO, implement these:
-   -- , define :: U -- ^ Define macros on the commandline
-   } deriving (Show)
+type Args = MainArgs :| MetaArgs
+data MainArgs = MainArgs
+      { debug     :: Bool        -- ^ Debug
+      , debugOpts :: Maybe String
+      , overwrite :: Bool        -- ^ Allow owerwriting of files, default is no overwriting
+      , pretend   :: Bool
+      , baseDir   :: Maybe String  -- ^ Base directory for output files
+      , oo        :: OutSpecs      -- ^ Output streams: files, stdout and stderr
+      , ii        :: InSpecs       -- ^ Input streams: files and stdin
+
+      {- TODO:
+         implement define :: U -- ^ Define macros on the commandline
+      -}
+      }
+   deriving (Show)
+
+data MetaArgs = MetaArgs
 
 
 optp :: O.ParserInfo Args
-optp = O.info (O.helper <*> parser) desc
+optp = O.info (O.helper <*> (Left <$> optParser)) optProgDesc
+
+optProgDesc = O.fullDesc
+   <> O.header "m5 -- a macro processor"
+   <> O.progDesc ".. description .."
+optParser = pure MainArgs
+   <*> sw 'd' "debug" "print debug info to stdout"
+   <*> (O.optional $ str 'x' "debugopts" "Specify debug behavior")
+   <*> sw 'f' "overwrite" "Overwrite existing files"
+   <*> sw 'p' "pretend" "Do everything short of writing/creating any outputs"
+   <*> (O.optional
+      $ str' 'b' "basedir" "Base directory for output files"
+      $ O.metavar "DIR")
+   <*> (O.many
+            $ either (error "parse oo fail") id
+            . parseOutSpec cfg
+            <$> str 'o' "oo" "Map output streams")
+   <*> (O.many
+         $ either (error "parse ii fail") id
+         . parseInSpec
+         <$> (O.argument O.str
+                $ O.metavar "input files or stream"
+               <> O.help "Base directory for output files" ))
    where
-      desc = O.fullDesc
-         <> O.header "m5 -- a macro processor"
-         <> O.progDesc ".. description .."
-      parser = pure Args
-         <*> sw 'd' "debug" "print debug info to stdout"
-         <*> sw 'f' "overwrite" "Overwrite existing files"
-         <*> sw 'p' "pretend" "Do everything short of writing/creating any outputs"
-         <*> (O.optional
-            $ str' 'b' "basedir" "Base directory for output files"
-            $ O.metavar "DIR")
-         <*> (O.many
-                  $ either (error "parse oo fail") id
-                  . parseOutSpec cfg
-                  <$> str 'o' "oo" "Map output streams")
-         <*> (O.many
-               $ either (error "parse ii fail") id
-               . parseInSpec
-               <$> (O.argument O.str
-                      $ O.metavar "input files or stream"
-                     <> O.help "Base directory for output files" ))
       sw short long help = sw' short long help mempty
       str short long help = str' short long help mempty
       sw' short long help more = O.switch $
@@ -249,13 +289,20 @@ parseInSpec str = return $ case str of
 -- | A map from stream name to an out-stream (bash) or to file. If
 -- only one stream was defined in input, then having a sink is
 -- enough -- everythint is put there.
-type OutSpecs = [OutSpec]
-type OutSpec = (Name, OutStream) :| OutStream
+type OutSpecs  = [OutSpec]
+type OutSpec   = MkOut OutStream
+type OutActionSpec = MkOut OutAction
+
+type OutAction = Raw -> IO ()
+
+type MkOut a = (Name, a) :| a
 data OutStream
    = StdOut
    | StdErr
    | OutFile FilePath
    deriving (Show)
+
+
 
 getSinkFilePath :: OutSpec -> Maybe FilePath
 getSinkFilePath (Left (name, OutFile path)) = Just path
@@ -274,8 +321,11 @@ addBase base li = map f li
 -- | Standard out is the default output map.
 instance Default OutSpecs where def = [( Right StdOut )]
 
+{-
+xxx = O.subparser
+    ( O.command "meta" (O.info optParser optProgDesc)
+   <> O.command "" (O.info optParser optProgDesc)
+   )
+-}
 
-{- TODO
-   * Generate warning when baseDir is something, but no file outputs
-     have been defined.
-   -}
+
