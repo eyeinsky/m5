@@ -27,10 +27,12 @@ import qualified Data.Text.IO as TIO
 import Text.Parsec hiding (space, spaces, Line, Stream, (<|>))
 import Text.Parsec.Text
 import Data.Char
-import Data.Word (Word64)
+import Data.Word (Word32)
+import Numeric (showHex)
 import Data.List (concat)
 import Data.Either (either, lefts, rights, partitionEithers)
 import qualified Data.HashMap.Lazy as HM
+import qualified Data.HashSet      as HS
 
 import Control.Applicative ((*>),(<*), pure)
 import Control.Monad.Identity
@@ -46,6 +48,8 @@ import           System.Random (randomIO)
 
 import qualified Options.Applicative as O
 
+import Debug.Trace
+
 import M5.Helpers
 import M5.Types
 import M5.Parse
@@ -56,37 +60,45 @@ import qualified M5.Expand as E
 -- * Main
 
 main = do
-   x <- O.execParser optp
-   case x of 
-      Left args -> runMain $ do
+   args <- O.execParser optp
+   case args of 
+      Left mainArgs -> runMain $ do
    
-         let sw :: (Show a) => (T.Text -> T.Text) -> a -> EitherT T.Text IO ()
-             sw = mkDbg (debug args)
-             mBase = baseDir args
-             outSpecs = maybe id addBase mBase $ oo args :: OutSpecs
-             inDirs = let i = ii args in if null i then def else i
+         let rep :: forall a. Report a => a -> MainM ()
+             rep a = mkRep (debug mainArgs) a
+             mBase = baseDir mainArgs
+             outSpecs = maybe id addBase mBase $ oo mainArgs :: [OutAs OutStream]
+             inDirs = let i = ii mainArgs in if null i then def else i
 
-         outActSpec <- prepareOuts (overwrite args) (pretend args) outSpecs
+         -- Check for existing files, if no overwriting allowed
+         when (overwrite mainArgs) $ do
+            b <- or <$> mapM (lift . checkFileExists) outSpecs
+            when b $ left "Some files exist, quitting.."
 
-         sw ("Arguments: " <>) args
-         sw ("Calculated in streams: " <>) inDirs
-         sw ("Calculated out streams: " <>) outSpecs
-
+         -- Read and evaluate inputs
          inText <- readInputs inDirs
-         rand <- tshow <$> lift (randomIO :: IO Word64)
-         sw (\x -> "Input was:\n<<< " <> rand <> "\n"
-                <> x <> ">>> " <> rand)
-            inText
-         
-         result <- f "input contents" $ expandInput inText
-         mapM_ (sw ("Outstream: "<>)) $ HM.toList $ fromCollector result
-         
+         let parseResult = expandInput inText
+         collector <- f "input contents" parseResult
+
+         rep mainArgs >> rep inDirs >> rep outSpecs >>  rep inText
+         rep =<< collectorToOutputText collector
+
          maybe (return ()) (lift . Dir.createDirectoryIfMissing True) mBase -- create directory
+
+         let (tbl, unused) = combine collector outSpecs
+         if pretend mainArgs
+            then DeepSeq.deepseq (map (snd . snd) tbl) (return ())
+            else mapM_ (lift . doRow) tbl
+
+         rep tbl
 
          return ()
 
          where
-            f x = either (left . (("Parse error in " <> x) <>) . tshow) return
+            f :: T.Text -> Either ParseError a -> MainM a
+            f intro (Left err) = left $ "Parse error in " <> intro <> tshow err
+            f _     (Right res) = return res
+
 
 
 type MainM = EitherT T.Text IO
@@ -102,91 +114,97 @@ runMain m = either err ignore =<< runEitherT m
 cfg = ParserConf "=" "=>" "\\"
 
 
--- ** Debuging
+-- * Debuging
 
-mkDbg :: (Show a) => Bool -> (T.Text -> T.Text) -> a -> MainM ()
-mkDbg dbg f showable = if dbg
-   then lift $ TIO.putStrLn (f $ tshow showable)
-   else return ()
+mkRep dbg = if dbg then rep else const $ return ()
+   where
+      rep :: Report a => a -> MainM () 
+      rep = lift . TIO.putStrLn . report
+
+-- | The reporting (debugging) class, used when the debug flag is set
+-- on the command line. 
+class Report a where
+   report :: a -> T.Text
+
+dIndent = " - "
+unl = T.intercalate "\n"
+unc = T.intercalate ", "
+instance Report [InSpec] where
+   report li = "Inputs in order: " <> unc (map f li)
+      where f StdIn = "stdin"
+            f (File p) = "file '" <> T.pack p <> "'"
+instance Report [OutAs OutStream] where
+   report li = "Outputs in order: " <> unc (map h li)
+      where f StdOut = "stdout"
+            f StdErr = "stderr"
+            f (OutFile p) = "file '" <> T.pack p <> "'"
+            h = either ((\(a,b) -> a <>" > "<>b) . (w2t *** f)) ((">" <>) . f)
+instance Report TextInstance where
+   report (TextInstance rand txt) =
+         "<<<" <> r <> "\n" <> txt <> "\n>>>" <> r
+      where r = "["<> (T.pack $ showHex rand "]")
+instance Report InputText where
+   report (InputText ti) = "Input was:\n" <> report ti
+instance Report MainArgs where
+   report a = "Arguments: " <> tshow a
+
+instance Report Collector where
+   report (Collector m) = T.intercalate "\n" $ map f (HM.toList m) 
+      where f (name, raw) = "=> " <> w2t name <> "\n" <> raw2text raw
+instance Report OutputText where
+   report (OutputText ti) = "Output was:\n" <> report ti
+
+newtype NoSourceStream = NSS [Name]
+instance Report NoSourceStream where
+   report (NSS li) = "No source to output mappings: " <> T.intercalate ", " (w2t <$> li)
+
+instance Report Tbl where
+   report li = "Output table:\n" <> unl (map row li)
+      where row (name, (outStream, raw)) = " - " <> w2t name <> ": " <> f outStream
+            f StdOut = "stdout"
+            f StdErr = "stderr"
+            f (OutFile p) = "file '" <> pack p <> "'"
 
 
 -- * Act on inputs and outputs
 
-
-expandInput text = runM . E.expand <$> parseAst cfg text
+expandInput (InputText (TextInstance _ text)) = runM . E.expand <$> parseAst cfg text
    where runM = runIdentity . flip evalStateT HM.empty . execWriterT
 
+-- | Output a row in the output table
+doRow (name, (st, raw)) = f raw
+   where f = streamToFunc st . raw2text
 
--- 
+-- | The output table.
+type Tbl = [(Name, (OutStream, Raw))]
 
-combine :: CollectorR -> [OutActionSpec] -> MainM ()
-combine hm li = let
-      lifted = ([],) <$> hm :: HM.HashMap Word ([OutActionSpec],Raw)
+-- | Combine collector with output specifications to a single output,
+-- table plus unused streams.
+combine :: Collector -> [OutAs OutStream] -> (Tbl, HM.HashMap Name Raw)
+combine (Collector hm) li = let
       (nameds, anons) = partitionEithers li
-   in if not (null anons)
-      then u
-      else u
-   {-
-   Left (name, sink) -> maybe
-      (left $ "Collector stream '"<>w2t name<>"' not defined")
-      (lift . outputter sink)
-      (HM.lookup name hm)
-   Right sink -> case HM.toList hm of
-      [(_, value)] -> lift $ outputter sink value
-      [] -> left "No streams defined in a 'catch all to single sink' output"
-      _  -> left "More than one stream defined in a 'catch all to single sink'"
-      -}
-   where
-      x=x
+      lookup = flip HM.lookup hm
+   in if null anons
+      then let  
+         f (name, spec) tup@ (tbl', used') = maybe' (lookup name) tup
+            (\raw -> ((name, (spec, raw)) : tbl', HS.insert name used'))
+         tbl :: Tbl
+         used :: HS.HashSet Name
+         (tbl, used) = foldr f ([], HS.empty) nameds
+         unused = foldr HM.delete hm $ HS.toList used
+         in (tbl, unused)
+      else error "anon def"
 
+-- | Convert output specification to an IO function.
+streamToFunc :: OutStream -> (T.Text -> IO ())
+streamToFunc st = case st of
+   StdOut -> TIO.putStr
+   StdErr -> TIO.hPutStr stderr
+   OutFile path -> TIO.writeFile path
 
--- ** Prepare output streams
-
--- | Evaluate OutSpecs to OutActionSpec. If overwrite is False
--- then return early with the list of files that do.
-prepareOuts :: Bool -> Bool -> [OutSpec] -> MainM [OutActionSpec]
-prepareOuts ovr pret specs = do
-   (existing, rest) <- partitionEithers <$> (lift $ mapM f specs)
-   if null existing
-      then return rest
-      else left $ "Files exist: " <> tshow existing
-   where 
-      g = specToAction ovr pret
-      f :: OutSpec -> IO (Either FilePath OutActionSpec)
-      f (Left (name, streamDef)) = do 
-         e <- g streamDef
-         return $ case e of
-            Left fp -> Left fp
-            Right act -> Right (Left (name, act))
-      f (Right streamDef) = do
-         e <- g streamDef
-         return $ case e of
-            Left fp -> Left fp
-            Right act -> Right (Right act)
-
--- | Converts an output destination to either a Left if
--- overwrite is on and file exists. Otherwise returns a
--- function that outputs the 'Raw' to its destination.
-specToAction
-   :: Bool                       -- ^ whether to overwrite
-   -> Bool                       -- ^ whether to pretend
-   -> OutStream                  -- ^ outstream, i.e sink
-   -> IO (FilePath :| OutAction) -- ^ Either file exists or write action
-specToAction ovr pretend sink = case sink of
-   StdOut -> ret $ TIO.putStr . raw2text
-   StdErr -> ret $ TIO.hPutStr stderr . raw2text
-   OutFile path -> let write = handlePretend (TIO.writeFile path . raw2text)
-      in if ovr
-         then rr write
-         else bool (Left path) (Right write) <$> Dir.doesFileExist path
-   where
-      rr = return . Right 
-      ret act = return $ Right $ handlePretend act
-      handlePretend doReally raw = if pretend
-         then DeepSeq.deepseq raw (return ())
-         else doReally raw
-      
-
+-- | Check if the file specified already exists
+checkFileExists :: OutAs OutStream -> IO Bool
+checkFileExists = maybe (return False) Dir.doesFileExist . getSinkFilePath 
 
 
 
@@ -200,8 +218,8 @@ data MainArgs = MainArgs
       , overwrite :: Bool        -- ^ Allow owerwriting of files, default is no overwriting
       , pretend   :: Bool
       , baseDir   :: Maybe String  -- ^ Base directory for output files
-      , oo        :: OutSpecs      -- ^ Output streams: files, stdout and stderr
-      , ii        :: InSpecs       -- ^ Input streams: files and stdin
+      , oo        :: [OutAs OutStream]      -- ^ Output streams: files, stdout and stderr
+      , ii        :: [InSpec]       -- ^ Input streams: files and stdin
 
       {- TODO:
          implement define :: U -- ^ Define macros on the commandline
@@ -209,7 +227,7 @@ data MainArgs = MainArgs
       }
    deriving (Show)
 
-data MetaArgs = MetaArgs
+data MetaArgs = MetaArgs deriving (Show)
 
 
 optp :: O.ParserInfo Args
@@ -222,14 +240,14 @@ optParser = pure MainArgs
    <*> sw 'd' "debug" "print debug info to stdout"
    <*> (O.optional $ str 'x' "debugopts" "Specify debug behavior")
    <*> sw 'f' "overwrite" "Overwrite existing files"
-   <*> sw 'p' "pretend" "Do everything short of writing/creating any outputs"
+   <*> sw 'p' "pretend" "Do everything short of touching any outputs"
    <*> (O.optional
-      $ str' 'b' "basedir" "Base directory for output files"
-      $ O.metavar "DIR")
+         $ str' 'b' "basedir" "Base directory for output files"
+         $ O.metavar "DIR")
    <*> (O.many
-            $ either (error "parse oo fail") id
-            . parseOutSpec cfg
-            <$> str 'o' "oo" "Map output streams")
+         $ either (error "parse oo fail") id
+         . parseOutSpec cfg
+          <$> str 'o' "oo" "Map output streams")
    <*> (O.many
          $ either (error "parse ii fail") id
          . parseInSpec
@@ -251,7 +269,7 @@ optParser = pure MainArgs
      only to reuse the content parsers. Should I get rid of
      this dependency?
    -}
-parseOutSpec :: ParserConf -> String -> Either ParseError OutSpec
+parseOutSpec :: ParserConf -> String -> Either ParseError (OutAs OutStream)
 parseOutSpec cfg xs = cfgParse cfg outParser xs
    where
       outParser = ((,) <$> word <* gt <*> sink) <:|> sink
@@ -265,37 +283,37 @@ parseOutSpec cfg xs = cfgParse cfg outParser xs
 -- * Stream direction
 
 -- | A list of sources, where source is either stdin or file
-type InSpecs = [Input]
-data Input
+data InSpec
    = StdIn
    | File FilePath
    deriving (Show)
-instance Default InSpecs where def = [StdIn]
+instance Default [InSpec] where def = [StdIn]
 
 
 -- | Parses input specifiers, and gets their contents as a single text.
+
+newtype OutputText = OutputText { fromOutputText :: TextInstance }
+collectorToOutputText col = OutputText <$> mkTI (report col)
+
+mkTI txt = TextInstance <$> lift randomIO <*> pure txt
+
+newtype InputText = InputText { fromInputText :: TextInstance }
+data TextInstance = TextInstance { stRand :: Word32, stText :: T.Text }
 readInputs []  = left "Empty input list"
-readInputs ins = T.concat <$> mapM readInp ins
+readInputs ins = InputText <$> (mkTI =<< (T.concat <$> mapM readInp ins))
    where readInp input = liftIO $ case input of
             StdIn -> TIO.getContents
             File path -> TIO.readFile path
 
-
-parseInSpec :: String -> Either ParseError Input
+parseInSpec :: String -> Either ParseError InSpec
 parseInSpec str = return $ case str of
    "-" -> StdIn
    fp  -> File fp
-
--- | A map from stream name to an out-stream (bash) or to file. If
--- only one stream was defined in input, then having a sink is
--- enough -- everythint is put there.
-type OutSpecs  = [OutSpec]
-type OutSpec   = MkOut OutStream
-type OutActionSpec = MkOut OutAction
+{- ^ TODO: implement proper parsers. -}
 
 type OutAction = Raw -> IO ()
 
-type MkOut a = (Name, a) :| a
+type OutAs a = (Name, a) :| a
 data OutStream
    = StdOut
    | StdErr
@@ -304,14 +322,14 @@ data OutStream
 
 
 
-getSinkFilePath :: OutSpec -> Maybe FilePath
+getSinkFilePath :: OutAs OutStream -> Maybe FilePath
 getSinkFilePath (Left (name, OutFile path)) = Just path
 getSinkFilePath (Right (OutFile path)) = Just path
 getSinkFilePath _ = Nothing
 
-addBase :: FilePath -> OutSpecs -> OutSpecs
+addBase :: FilePath -> [OutAs OutStream] -> [OutAs OutStream]
 addBase base li = map f li
-   where f :: OutSpec -> OutSpec
+   where f :: OutAs OutStream -> OutAs OutStream
          f (Left (n, o)) = Left  (n, ab o)
          f (Right o)     = Right (ab o)
          ab :: OutStream -> OutStream
@@ -319,7 +337,7 @@ addBase base li = map f li
          ab x = x
 
 -- | Standard out is the default output map.
-instance Default OutSpecs where def = [( Right StdOut )]
+instance Default [OutAs OutStream] where def = [( Right StdOut )]
 
 {-
 xxx = O.subparser
@@ -327,5 +345,3 @@ xxx = O.subparser
    <> O.command "" (O.info optParser optProgDesc)
    )
 -}
-
-

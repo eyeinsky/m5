@@ -10,7 +10,7 @@ import Text.Parsec.Text
 import Data.Char
 import Data.Either (either)
 
-import Control.Applicative ((*>),(<*))
+import Control.Applicative ((*>),(<*), pure)
 
 import Control.Monad.Identity
 import Control.Monad.State
@@ -89,7 +89,8 @@ eol = EOL <$> eolP <?> "eol"
 
 spacesP = many spaceP 
 spaceP = oneOf sp
-eolP = many1 (oneOf nl)
+eolP = f '\n' '\r' <|> f '\r' '\n'
+   where f a b = (:) <$> char a <*> (string [b] <|> pure [])
 
 sp = " \t"
 nl = "\r\n"
