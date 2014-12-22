@@ -77,15 +77,19 @@ main = do
 
          -- Read and evaluate inputs
          inText <- readInputs inDirs
-         let parseResult = expandInput inText
-         collector <- f "input contents" parseResult
+         let parseResult = parseInput inText
+             expandResult = expandAst parseResult
+         lift $ print parseResult
+         coll <- f "input contents" expandResult
+         let (asColl, psColl) = partCollector coll
+         -- lift $ print coll
 
          rep mainArgs >> rep inDirs >> rep outSpecs >>  rep inText
-         rep =<< collectorToOutputText collector
+         rep =<< collectorToOutputText asColl
 
          maybe (return ()) (lift . Dir.createDirectoryIfMissing True) mBase -- create directory
 
-         let (tbl, unused) = combine collector outSpecs
+         let (tbl, unused) = combine asColl outSpecs
          if pretend mainArgs
             then DeepSeq.deepseq (map (snd . snd) tbl) (return ())
             else mapM_ (lift . doRow) tbl
@@ -108,10 +112,6 @@ runMain m = either err ignore =<< runEitherT m
    where
       err txt = TIO.putStrLn ("ERROR: "<> txt)
       ignore = const (return ())
-
--- ** Hardcoded parser configuration 
-
-cfg = ParserConf "=" "=>" "\\"
 
 
 -- * Debuging
@@ -148,15 +148,15 @@ instance Report InputText where
 instance Report MainArgs where
    report a = "Arguments: " <> tshow a
 
-instance Report Collector where
+instance Report (Collector AbstractName) where
    report (Collector m) = T.intercalate "\n" $ map f (HM.toList m) 
       where f (name, raw) = "=> " <> w2t name <> "\n" <> raw2text raw
 instance Report OutputText where
    report (OutputText ti) = "Output was:\n" <> report ti
 
-newtype NoSourceStream = NSS [Name]
+newtype NoSourceStream = NSS [StreamName]
 instance Report NoSourceStream where
-   report (NSS li) = "No source to output mappings: " <> T.intercalate ", " (w2t <$> li)
+   report (NSS li) = "No source to output mappings: " <> T.intercalate ", " (w2t <$> u ) -- li)
 
 instance Report Tbl where
    report li = "Output table:\n" <> unl (map row li)
@@ -168,19 +168,30 @@ instance Report Tbl where
 
 -- * Act on inputs and outputs
 
-expandInput (InputText (TextInstance _ text)) = runM . E.expand <$> parseAst cfg text
+-- | Evaluate source text into collector.
+expandAst ast = runM . E.expand <$> ast
    where runM = runIdentity . flip evalStateT HM.empty . execWriterT
+
+parseInput (InputText (TextInstance _ text)) = parseAst cfg text
+
+
+-- | Separate abstract streams from file paths.
+partCollector (Collector hm) = wrap $ foldr f (HM.empty, HM.empty) $ HM.toList hm
+   where f (Abstract w, raw) (as, ps) = (HM.insert w raw as, ps)
+         f (Path     p, raw) (as, ps) = (as, HM.insert p raw ps)
+         wrap = Collector *** Collector
+
 
 -- | Output a row in the output table
 doRow (name, (st, raw)) = f raw
    where f = streamToFunc st . raw2text
 
 -- | The output table.
-type Tbl = [(Name, (OutStream, Raw))]
+type Tbl = [(AbstractName, (OutStream, Raw))]
 
 -- | Combine collector with output specifications to a single output,
 -- table plus unused streams.
-combine :: Collector -> [OutAs OutStream] -> (Tbl, HM.HashMap Name Raw)
+combine :: Collector AbstractName -> [OutAs OutStream] -> (Tbl, HM.HashMap AbstractName Raw)
 combine (Collector hm) li = let
       (nameds, anons) = partitionEithers li
       lookup = flip HM.lookup hm
@@ -189,7 +200,7 @@ combine (Collector hm) li = let
          f (name, spec) tup@ (tbl', used') = maybe' (lookup name) tup
             (\raw -> ((name, (spec, raw)) : tbl', HS.insert name used'))
          tbl :: Tbl
-         used :: HS.HashSet Name
+         used :: HS.HashSet AbstractName
          (tbl, used) = foldr f ([], HS.empty) nameds
          unused = foldr HM.delete hm $ HS.toList used
          in (tbl, unused)
@@ -313,7 +324,7 @@ parseInSpec str = return $ case str of
 
 type OutAction = Raw -> IO ()
 
-type OutAs a = (Name, a) :| a
+type OutAs a = (AbstractName, a) :| a
 data OutStream
    = StdOut
    | StdErr

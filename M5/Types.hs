@@ -28,10 +28,14 @@ import M5.Helpers
 data AST = AST Stream [Stream :| MacroBlock] deriving Show
 data MacroBlock = MacroBlock LHS Text deriving (Show)
 data Macro = Macro LHS Line deriving (Show)
-data LHS = LHS { name :: Name, args :: FormalArgs } deriving (Show)
-type Name = Word
+data LHS = LHS { name :: AbstractName, args :: FormalArgs } deriving (Show)
 type FormalArgs = [Word]
-data Stream = Stream Word Text deriving (Show)
+data Stream = Stream StreamName Text deriving (Show)
+data StreamName
+   = Abstract Word
+   | Path FilePath
+   deriving (Eq, Show, Generic)
+instance Hashable StreamName
 type Text = [Line :| Macro]
 type Raw = [Line]
 type Line = ([Token], EOL)
@@ -41,6 +45,8 @@ instance Hashable Word
 data Spaces = Sp String deriving (Show, Generic)
 data EOL = EOL String | EOF deriving (Show, Generic)
 type F = String
+
+type AbstractName = Word
 
 
 instance NFData EOL where rnf = genericRnf
@@ -80,21 +86,21 @@ w2t (Sy str) = pack str
 -- | The output monad is a writer.thus unionWith (<>)
 -- is what we want (rather than the default union, which keeps value of the
 -- first key).
-type M = WriterT Collector (StateT Macros Identity)
+type M = WriterT (Collector StreamName) (StateT Macros Identity)
 
 -- | Output streams are stored in a key-value map of stream name to stream
 -- contents. The monoid instance for the writer is defined with 'unionWith (<>)'
 -- as it concatenates the values.
-newtype Collector = Collector { fromCollector :: CollectorR }
-type CollectorR = HM.HashMap Word Raw
+newtype Collector a = Collector { fromCollector :: HM.HashMap a Raw }
+   deriving Show
 
-instance Monoid Collector where
+instance (Eq a, Hashable a) => Monoid (Collector a) where
    mempty = Collector HM.empty
    mappend (Collector a) (Collector b) = Collector (a `f` b)
       where f = HM.unionWith (<>)
 
 -- | Macro definitions are kept in a map from macro name to macro definition.
-type Macros = HM.HashMap Name Def
+type Macros = HM.HashMap AbstractName Def
 
 -- | Definition of a macro are its formal aruments and its body. A future
 -- optimization would be to have a body with pre-found holes (for speed).

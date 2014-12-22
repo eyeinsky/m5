@@ -49,12 +49,19 @@ cfgParse cfg parser text = runReader (runParserT parser () "<todo>" text) cfg
 
 
 ast = AST <$> stdout <*> many (stream <:|> macroblock) <* eof
-   where stdout = Stream (W "stdout") <$> (body <|> return [])
+   where stdout = Stream (Abstract $ W "stdout") <$> (body <|> return [])
 
 stream = Stream
-   <$> ((asks pcStream >>= string) *> many spaceP *> word <* eol)
+   <$> ((asks pcStream >>= string) *>  many spaceP *> (abstract <|> path))
    <*> body
    <?> "stream"
+   where abstract = Abstract <$> (word <* eol)
+         path = Path <$> (many1 (noneOf "\n\r") <* eol)
+
+
+-- | Hardcoded parser configuration.
+cfg = ParserConf "=" "=>" "\\"
+
 
 
 macroblock = MacroBlock
@@ -96,4 +103,4 @@ sp = " \t"
 nl = "\r\n"
 
 
-pt p (s :: T.Text) = parseTest p s
+pt p (s :: T.Text) = print $ cfgParse cfg p s

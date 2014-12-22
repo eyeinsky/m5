@@ -36,7 +36,7 @@ define lhs body = modify (HM.insert (name lhs) (args lhs, body))
 eStream :: Stream -> M ()
 eStream (Stream name text) = output name =<< eText text
    where
-      output :: Word -> Raw -> M ()
+      -- output :: Word -> Raw -> M ()
       output name text = tell $ Collector $ HM.singleton name text
 
 eText :: Text -> M Raw

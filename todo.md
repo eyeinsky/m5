@@ -15,5 +15,3 @@
   and others. See also the flag reference of m4. 
 
 
-meta
-   inputs:
