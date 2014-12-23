@@ -80,16 +80,14 @@ main = do
          let parseResult = parseInput inText
              expandResult = expandAst parseResult
          lift $ print parseResult
-         coll <- f "input contents" expandResult
-         let (asColl, psColl) = partCollector coll
-         -- lift $ print coll
+         colls <- f "input contents" expandResult
 
          rep mainArgs >> rep inDirs >> rep outSpecs >>  rep inText
          rep =<< collectorToOutputText asColl
 
          maybe (return ()) (lift . Dir.createDirectoryIfMissing True) mBase -- create directory
 
-         let (tbl, unused) = combine asColl outSpecs
+         let (tbl, unused) = u -- combine colls outSpecs
          if pretend mainArgs
             then DeepSeq.deepseq (map (snd . snd) tbl) (return ())
             else mapM_ (lift . doRow) tbl
@@ -175,36 +173,40 @@ expandAst ast = runM . E.expand <$> ast
 parseInput (InputText (TextInstance _ text)) = parseAst cfg text
 
 
--- | Separate abstract streams from file paths.
-partCollector (Collector hm) = wrap $ foldr f (HM.empty, HM.empty) $ HM.toList hm
-   where f (Abstract w, raw) (as, ps) = (HM.insert w raw as, ps)
-         f (Path     p, raw) (as, ps) = (as, HM.insert p raw ps)
-         wrap = Collector *** Collector
-
 
 -- | Output a row in the output table
 doRow (name, (st, raw)) = f raw
    where f = streamToFunc st . raw2text
 
 -- | The output table.
-type Tbl = [(AbstractName, (OutStream, Raw))]
+type Tbl = [(Maybe AbstractName, Maybe OutStream, Raw)]
 
 -- | Combine collector with output specifications to a single output,
 -- table plus unused streams.
-combine :: Collector AbstractName -> [OutAs OutStream] -> (Tbl, HM.HashMap AbstractName Raw)
-combine (Collector hm) li = let
+combine :: Collector StreamName -> [OutAs OutStream] -> Tbl
+combine coll li = let
       (nameds, anons) = partitionEithers li
-      lookup = flip HM.lookup hm
+      (asColl, psColl) = partCollectors coll
+      lookup = flip HM.lookup asColl
    in if null anons
       then let  
          f (name, spec) tup@ (tbl', used') = maybe' (lookup name) tup
-            (\raw -> ((name, (spec, raw)) : tbl', HS.insert name used'))
+            (\raw -> ((name, spec, raw) : tbl', HS.insert name used'))
          tbl :: Tbl
          used :: HS.HashSet AbstractName
-         (tbl, used) = foldr f ([], HS.empty) nameds
+         (asTbl, used) = foldr f ([], HS.empty) nameds
          unused = foldr HM.delete hm $ HS.toList used
-         in (tbl, unused)
+         in ps2tbl psColl <> as2tbl <> uu2tbl unused
       else error "anon def"
+   where
+      -- | Separate abstract streams from file paths.
+      partCollectors (Collector hm) = foldr f (HM.empty, HM.empty) $ HM.toList hm
+         where f (Abstract w, raw) (as, ps) = (HM.insert w raw as, ps)
+               f (Path     p, raw) (as, ps) = (as, HM.insert p raw ps)
+      ps2tbl hm = hm & HM.toList & map (\(p, r) -> (Nothing, Just $ OutFile p, r))
+      as2tbl tbl = tbl & map (\(an, os, r) -> (Just an, Just os, r))
+      uu2tbl hs = hs & HS.toList & map (\(n, r) -> (Just n, Nothing, r)
+      
 
 -- | Convert output specification to an IO function.
 streamToFunc :: OutStream -> (T.Text -> IO ())
